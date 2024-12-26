@@ -29,7 +29,7 @@ def read_images_from_folder(folder_path):
     return images
 
 # 使用示例
-folder_path = '/media/vrlab/rabbit/print3dingp/torch-ngp/workspace/fox/print_volume_s/ngp_613'
+folder_path = '/media/vrlab/rabbit/print3dingp/print_ngp/workspace/fox/print_volume_s1225/ngp_613'
 # folder_path = '/media/vrlab/rabbit/print3dingp/torch-ngp/workspace/lego/print_volume_s/ngp_300'
 images = read_images_from_folder(folder_path)
 images = images[::-1]
@@ -41,4 +41,4 @@ for i in range(len(images)):
     result_image[:, :, [3]] = result_image[:, :, [3]] + (1 - result_image[:, :, [3]]) * images[i][:, :, [3]]
 
 
-cv2.imwrite("workspace/fox_p_s.png", result_image*255,)
+cv2.imwrite("workspace/fox_p_s1225.png", result_image*255,)

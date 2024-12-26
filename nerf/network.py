@@ -110,7 +110,8 @@ class NeRFNetwork(NeRFRenderer):
         geo_feat = h[..., 1:]
 
         # color
-        
+        d = torch.zeros_like(d)
+        d[:, 0] = 1
         d = self.encoder_dir(d)
         h = torch.cat([d, geo_feat], dim=-1)
         for l in range(self.num_layers_color):
@@ -144,7 +145,8 @@ class NeRFNetwork(NeRFRenderer):
 
     def background(self, x, d):
         # x: [N, 2], in [-1, 1]
-
+        d = torch.zeros_like(d)
+        d[:, 0] = 1
         h = self.encoder_bg(x) # [N, C]
         d = self.encoder_dir(d)
 

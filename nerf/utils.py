@@ -32,6 +32,8 @@ from packaging import version as pver
 import lpips
 from torchmetrics.functional import structural_similarity_index_measure
 
+import json
+
 def custom_meshgrid(*args):
     # ref: https://pytorch.org/docs/stable/generated/torch.meshgrid.html?highlight=meshgrid#torch.meshgrid
     if pver.parse(torch.__version__) < pver.parse('1.10'):
@@ -694,10 +696,23 @@ class Trainer(object):
         # saving...
         x, y, z = resolution
         delta = (bbox[5] - bbox[2])/ resolution[2]
+        with open(os.path.join(save_folder, f'params.json'), "w", encoding="utf-8") as json_file:
+            print(bbox, resolution, delta)
+            data = {
+                "bbox": bbox,
+                "resolution": [int(r) for r in resolution],
+                "delta": delta,
+            }
+            json.dump(data, json_file, ensure_ascii=False, indent=4)  # ensure_ascii=False 用于支持非 ASCII 字符
         for i in range(z):
             img = volume[:, :, i, :]
-            img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3],  cv2.COLOR_RGB2BGR) * 255
-            img[:, :, 3] =  (1 - np.exp(-1 * delta * self.model.density_scale * img[:, :, 3])) * 255
+            img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3],  cv2.COLOR_RGB2BGR)
+            
+            save_path = os.path.join(save_folder, f'array_{str(i).zfill(8)}.npy')
+            np.save(save_path, img)
+            
+            img[:, :, 3] =  (1 - np.exp(-1 * delta * self.model.density_scale * img[:, :, 3]))
+            img *= 255
             
             # 保存为PNG文件
             save_path = os.path.join(save_folder, f'image_{str(i).zfill(8)}.png')
