@@ -61,14 +61,15 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_folder', type=str, default='workspace/lego/volume/ngp_300')
-    parser.add_argument('--output_folder', type=str, default='workspace/lego/print_volume_s_1225/ngp_300')
+    parser.add_argument('--output_folder', type=str, default='workspace/lego/print_volume/ngp_300')
     opt = parser.parse_args()
 
 
-    os.makedirs(opt.output_folder, exist_ok=True)
+    os.makedirs(os.path.join(opt.output_folder, 'print'), exist_ok=True)
+    os.makedirs(os.path.join(opt.output_folder, 'index'), exist_ok=True)
 
     
-    image_paths = glob(os.path.join(opt.input_folder, '*.npy'))
+    image_paths = glob(os.path.join(opt.input_folder, 'array/*.npy'))
     
     with open(os.path.join(opt.input_folder, 'params.json'), "r", encoding="utf-8") as json_file:
         data = json.load(json_file)
@@ -90,8 +91,9 @@ if __name__ == '__main__':
             print(f"Warning: {path} could not be loaded.")
             continue
         
-        # 将图片归一化到0-1之间
+        # 将图片从bgr转化到rgb空间
         img_normalized = img
+        img_normalized[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3], cv2.COLOR_BGR2RGB)
         
         image_cmykw = rgba_to_cmykwa_image(img_normalized[:, :, :3])
         image_cmykwa = np.concatenate([image_cmykw, img_normalized[:, :, [3]]], axis=2)
@@ -166,12 +168,15 @@ if __name__ == '__main__':
 
     # 生成随机数矩阵
     is_clear_random = np.random.rand(z_size, x_size, y_size)
+    not_empty = volume_images[..., 5] > 1 # clip_magicnum
 
     # 判断是否 clear
-    is_clear = (is_clear_random >= w_concentration) & (is_clear_random >= w_concentration + k_concentration)
+    is_clear = (is_clear_random >= w_concentration + k_concentration)
+    
 
     # 初始化结果数组
     print_images = np.zeros((z_size, x_size, y_size, 4), dtype=np.uint8)
+    index_images = np.zeros((z_size, x_size, y_size), dtype=np.uint8)
 
     # 填充非 clear 部分
     not_clear_mask = ~is_clear & (volume_images[..., 0:3].sum(axis=-1) > 0)
@@ -195,11 +200,11 @@ if __name__ == '__main__':
     
     color_random = np.random.rand(z_size, x_size, y_size)
     
-    c_mask = (color_random < c_concentration)
-    m_mask = (c_concentration <= color_random) & (color_random < c_concentration + m_concentration)
-    y_mask = (c_concentration + m_concentration <= color_random) & (color_random < c_concentration + m_concentration + y_concentration)
-    w_mask = (c_concentration + m_concentration + y_concentration <= color_random) & (color_random < c_concentration + m_concentration + y_concentration + w_concentration)
-    k_mask = (c_concentration + m_concentration + y_concentration + w_concentration <= color_random) & (color_random < c_concentration + m_concentration + y_concentration + w_concentration + k_concentration)
+    c_mask = (color_random < c_concentration) & not_empty
+    m_mask = (c_concentration <= color_random) & (color_random < c_concentration + m_concentration)& not_empty
+    y_mask = (c_concentration + m_concentration <= color_random) & (color_random < c_concentration + m_concentration + y_concentration)& not_empty
+    w_mask = (c_concentration + m_concentration + y_concentration <= color_random) & (color_random < c_concentration + m_concentration + y_concentration + w_concentration)& not_empty
+    k_mask = (c_concentration + m_concentration + y_concentration + w_concentration <= color_random) & (color_random < c_concentration + m_concentration + y_concentration + w_concentration + k_concentration)& not_empty
     
     
     # random_indices = np.random.choice(len(cmykw_save_color), size=(z_size, x_size, y_size), p=normalized_weights.reshape(-1, 3))
@@ -217,6 +222,13 @@ if __name__ == '__main__':
     print_images[y_mask] = np.array(cmykw_save_color[2])
     print_images[k_mask] = np.array(cmykw_save_color[3])
     print_images[w_mask] = np.array(cmykw_save_color[4])
+    
+    index_images[:] = 5
+    index_images[c_mask] = 0
+    index_images[m_mask] = 1
+    index_images[y_mask] = 2
+    index_images[k_mask] = 3
+    index_images[w_mask] = 4
 
 
 
@@ -224,6 +236,11 @@ if __name__ == '__main__':
 
     for i, path in enumerate(tqdm(image_paths)):
         base_name = os.path.basename(path).replace('npy','png')
-        save_path = os.path.join(opt.output_folder, base_name)
+        save_path = os.path.join(opt.output_folder, 'print', base_name)
+        print_images[i][:, :, 0:3] = cv2.cvtColor(print_images[i][:, :, 0:3], cv2.COLOR_RGB2BGR)
+        
         cv2.imwrite(save_path, print_images[i]*255)
+        
+        save_path = os.path.join(opt.output_folder, 'index', base_name)
+        cv2.imwrite(save_path, index_images[i])
         

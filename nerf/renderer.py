@@ -169,10 +169,14 @@ class NeRFRenderer(nn.Module):
 
         # upsample z_vals (nerf-like)
         if upsample_steps > 0:
+            print("WARRNING: DID NOT IMPLEMENTED YET!!!!")
+            print("WARRNING: DID NOT IMPLEMENTED YET!!!!")
+            print("WARRNING: DID NOT IMPLEMENTED YET!!!!")
             with torch.no_grad():
 
                 deltas = z_vals[..., 1:] - z_vals[..., :-1] # [N, T-1]
                 deltas = torch.cat([deltas, sample_dist * torch.ones_like(deltas[..., :1])], dim=-1)
+                deltas = torch.stack([deltas] * 3, dim=-1)
 
                 alphas = 1 - torch.exp(-deltas * self.density_scale * density_outputs['sigma'].squeeze(-1)) # [N, T]
                 alphas_shifted = torch.cat([torch.ones_like(alphas[..., :1]), 1 - alphas + 1e-15], dim=-1) # [N, T+1]

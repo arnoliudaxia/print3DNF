@@ -6,7 +6,6 @@ import imageio
 import random
 import warnings
 import tensorboardX
-
 import numpy as np
 import pandas as pd
 
@@ -195,7 +194,7 @@ def extract_volume_fields(bound_min, bound_max, resolution, query_func, S=128):
     Y = torch.linspace(bound_min[1], bound_max[1], resolution[1]).split(S)
     Z = torch.linspace(bound_min[2], bound_max[2], resolution[2]).split(S)
 
-    u = np.zeros(resolution+[4], dtype=np.float32)
+    u = np.zeros(resolution+[6], dtype=np.float32)
     with torch.no_grad():
         for xi, xs in enumerate(X):
             for yi, ys in enumerate(Y):
@@ -203,9 +202,9 @@ def extract_volume_fields(bound_min, bound_max, resolution, query_func, S=128):
                     xx, yy, zz = custom_meshgrid(xs, ys, zs)
                     pts = torch.cat([xx.reshape(-1, 1), yy.reshape(-1, 1), zz.reshape(-1, 1)], dim=-1) # [S, 3]
                     sigma, color = query_func(pts) # [S, 1] --> [x, y, z]
-                    sigma = sigma.reshape(len(xs), len(ys), len(zs)).detach().cpu().numpy()
+                    sigma = sigma.reshape(len(xs), len(ys), len(zs), 1).detach().cpu().numpy()
                     color = color.reshape(len(xs), len(ys), len(zs), 3).detach().cpu().numpy()
-                    u[xi * S: xi * S + len(xs), yi * S: yi * S + len(ys), zi * S: zi * S + len(zs), 3] = sigma
+                    u[xi * S: xi * S + len(xs), yi * S: yi * S + len(ys), zi * S: zi * S + len(zs), [3]] = sigma
                     u[xi * S: xi * S + len(xs), yi * S: yi * S + len(ys), zi * S: zi * S + len(zs), 0:3] = color
     return u
 
@@ -670,9 +669,12 @@ class Trainer(object):
         if save_folder is None:
             save_folder = os.path.join(self.workspace, 'volume', f'{self.name}_{self.epoch}')
 
-        self.log(f"==> Saving mesh to {save_folder}")
+        self.log(f"==> Saving volume to {save_folder}")
 
         os.makedirs(save_folder, exist_ok=True)
+        os.makedirs(os.path.join(save_folder, 'array'), exist_ok=True)
+        os.makedirs(os.path.join(save_folder, 'color'), exist_ok=True)
+        os.makedirs(os.path.join(save_folder, 'density'), exist_ok=True)
 
         def query_func(pts):
             with torch.no_grad():
@@ -697,26 +699,28 @@ class Trainer(object):
         x, y, z = resolution
         delta = (bbox[5] - bbox[2])/ resolution[2]
         with open(os.path.join(save_folder, f'params.json'), "w", encoding="utf-8") as json_file:
-            print(bbox, resolution, delta)
             data = {
                 "bbox": bbox,
                 "resolution": [int(r) for r in resolution],
                 "delta": delta,
             }
             json.dump(data, json_file, ensure_ascii=False, indent=4)  # ensure_ascii=False 用于支持非 ASCII 字符
-        for i in range(z):
+        for i in tqdm.tqdm(range(z)):
             img = volume[:, :, i, :]
             img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3],  cv2.COLOR_RGB2BGR)
             
-            save_path = os.path.join(save_folder, f'array_{str(i).zfill(8)}.npy')
+            save_path = os.path.join(save_folder, f'array/{str(i).zfill(8)}.npy')
             np.save(save_path, img)
             
             img[:, :, 3] =  (1 - np.exp(-1 * delta * self.model.density_scale * img[:, :, 3]))
+            img[:, :, 3] /= img[:, :, 3].max()
             img *= 255
             
-            # 保存为PNG文件
-            save_path = os.path.join(save_folder, f'image_{str(i).zfill(8)}.png')
-            cv2.imwrite(save_path, img)
+            # 保存为PNG文件 PNG图片仅用于预览
+            save_path = os.path.join(save_folder, f'color/{str(i).zfill(8)}.png')
+            cv2.imwrite(save_path, img[:, :, 0:3]*img[:, :, [3]]/255)
+            save_path = os.path.join(save_folder, f'density/{str(i).zfill(8)}.png')
+            cv2.imwrite(save_path, img[:, :, 3])
         
         self.log(f"==> Finished saving volume to {save_folder}.")
 

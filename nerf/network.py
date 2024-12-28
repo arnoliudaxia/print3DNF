@@ -20,6 +20,9 @@ class NeRFNetwork(NeRFRenderer):
                  num_layers_bg=2,
                  hidden_dim_bg=64,
                  bound=1,
+                 density_max_scale = 100.,
+                 print_density = [[2.883636819, 0.302264858, 0.193614904], [0.043354038, 8.749335941, 0.950262213], [0.0253694, 0.020829506, 2.294867001], [2.846568562, 3.071851834, 3.899442581], [2.807944551, 3.380290754, 5.646479876],  [0, 0, 0]],
+                 print_color = [[0, 1, 1], [1, 0, 1], [1, 1, 0], [0, 0, 0], [1, 1, 1], [0, 0, 0]],
                  **kwargs,
                  ):
         super().__init__(bound, **kwargs)
@@ -29,6 +32,10 @@ class NeRFNetwork(NeRFRenderer):
         self.hidden_dim = hidden_dim
         self.geo_feat_dim = geo_feat_dim
         self.encoder, self.in_dim = get_encoder(encoding, desired_resolution=2048 * bound)
+        self.density_max_scale = torch.tensor(density_max_scale, dtype=torch.float32, requires_grad=False).cuda()
+        self.print_density = torch.tensor(print_density, dtype=torch.float32, requires_grad=False).cuda()
+        self.print_color = torch.tensor(print_color, dtype=torch.float32, requires_grad=False).cuda()
+        # self.density_scale = nn.Parameter(torch.ones(1))
 
         sigma_net = []
         for l in range(num_layers):
@@ -38,7 +45,7 @@ class NeRFNetwork(NeRFRenderer):
                 in_dim = hidden_dim
             
             if l == num_layers - 1:
-                out_dim = 1 + self.geo_feat_dim # 1 sigma + 15 SH features for color
+                out_dim = 4
             else:
                 out_dim = hidden_dim
             
@@ -51,21 +58,21 @@ class NeRFNetwork(NeRFRenderer):
         self.hidden_dim_color = hidden_dim_color
         self.encoder_dir, self.in_dim_dir = get_encoder(encoding_dir)
         
-        color_net =  []
-        for l in range(num_layers_color):
-            if l == 0:
-                in_dim = self.in_dim_dir + self.geo_feat_dim
-            else:
-                in_dim = hidden_dim_color
+        # color_net =  []
+        # for l in range(num_layers_color):
+        #     if l == 0:
+        #         in_dim = self.in_dim_dir + self.geo_feat_dim
+        #     else:
+        #         in_dim = hidden_dim_color
             
-            if l == num_layers_color - 1:
-                out_dim = 3 # 3 rgb
-            else:
-                out_dim = hidden_dim_color
+        #     if l == num_layers_color - 1:
+        #         out_dim = 3 # 3 rgb
+        #     else:
+        #         out_dim = hidden_dim_color
             
-            color_net.append(nn.Linear(in_dim, out_dim, bias=False))
+        #     color_net.append(nn.Linear(in_dim, out_dim, bias=False))
 
-        self.color_net = nn.ModuleList(color_net)
+        # self.color_net = nn.ModuleList(color_net)
 
         # background network
         if self.bg_radius > 0:
@@ -105,23 +112,15 @@ class NeRFNetwork(NeRFRenderer):
             if l != self.num_layers - 1:
                 h = F.relu(h, inplace=True)
 
+        # h = F.softmax(h, dim=1)
+
         #sigma = F.relu(h[..., 0])
+        # sigma = (h.unsqueeze(-1) * self.print_density).sum(dim=1) * self.density_max_scale
+
+        # color = (h.unsqueeze(-1) * self.print_color).sum(dim=1)
         sigma = trunc_exp(h[..., 0])
-        geo_feat = h[..., 1:]
-
-        # color
-        d = torch.zeros_like(d)
-        d[:, 0] = 1
-        d = self.encoder_dir(d)
-        h = torch.cat([d, geo_feat], dim=-1)
-        for l in range(self.num_layers_color):
-            h = self.color_net[l](h)
-            if l != self.num_layers_color - 1:
-                h = F.relu(h, inplace=True)
-        
-        # sigmoid activation for rgb
-        color = torch.sigmoid(h)
-
+        sigma = torch.clamp(sigma, 0, self.density_max_scale)
+        color = torch.clamp(h[..., [1, 2, 3]], 0, 1)
         return sigma, color
 
     def density(self, x):
@@ -134,9 +133,29 @@ class NeRFNetwork(NeRFRenderer):
             if l != self.num_layers - 1:
                 h = F.relu(h, inplace=True)
 
-        #sigma = F.relu(h[..., 0])
+        # sigma = F.relu(h[..., 0])
+        
+        # h = torch.clamp(h, 0, 1)
+        # h = F.relu(h)
+        # h = F.softmax(h, dim=1)
+        # print(h[0])
+        # density_scale = torch.clamp(self.density_scale, 0, self.density_max_scale)
+        # print(density_scale, self.density_max_scale)
+        # sigma = (h.unsqueeze(-1) * self.print_density).sum(dim=1) * density_scale
+        # geo_feat = (h.unsqueeze(-1) * self.print_color).sum(dim=1) * density_scale / self.density_max_scale
+        # sigma = trunc_exp(h[..., 0:3])
+        # geo_feat = torch.clamp(h[..., 3:6], 0, 1)
+
         sigma = trunc_exp(h[..., 0])
-        geo_feat = h[..., 1:]
+        sigma = torch.clamp(sigma, 0, self.density_max_scale)
+        geo_feat = torch.clamp(h[..., [1, 2, 3]], 0, 1)
+        
+        
+        # geo_feat = geo_feat * sigma / self.density_max_scale
+
+        
+        # geo_feat = sigma * geo_feat
+        # geo_feat = geo_feat / (geo_feat.max(dim=1)[0].unsqueeze(-1) + 1e-5)
 
         return {
             'sigma': sigma,
@@ -163,36 +182,36 @@ class NeRFNetwork(NeRFRenderer):
 
     # allow masked inference
     def color(self, x, d, mask=None, geo_feat=None, **kwargs):
-        # x: [N, 3] in [-bound, bound]
-        # mask: [N,], bool, indicates where we actually needs to compute rgb.
+        # # x: [N, 3] in [-bound, bound]
+        # # mask: [N,], bool, indicates where we actually needs to compute rgb.
 
-        if mask is not None:
-            rgbs = torch.zeros(mask.shape[0], 3, dtype=x.dtype, device=x.device) # [N, 3]
-            # in case of empty mask
-            if not mask.any():
-                return rgbs
-            x = x[mask]
-            d = d[mask]
-            geo_feat = geo_feat[mask]
+        # if mask is not None:
+        #     rgbs = torch.zeros(mask.shape[0], 3, dtype=x.dtype, device=x.device) # [N, 3]
+        #     # in case of empty mask
+        #     if not mask.any():
+        #         return rgbs
+        #     x = x[mask]
+        #     d = d[mask]
+        #     geo_feat = geo_feat[mask]
 
-        d = torch.zeros_like(d)
-        d[:, 0] = 1
-        d = self.encoder_dir(d)
-        h = torch.cat([d, geo_feat], dim=-1)
-        for l in range(self.num_layers_color):
-            h = self.color_net[l](h)
-            if l != self.num_layers_color - 1:
-                h = F.relu(h, inplace=True)
+        # d = torch.zeros_like(d)
+        # d[:, 0] = 1
+        # d = self.encoder_dir(d)
+        # h = torch.cat([d, geo_feat], dim=-1)
+        # for l in range(self.num_layers_color):
+        #     h = self.color_net[l](h)
+        #     if l != self.num_layers_color - 1:
+        #         h = F.relu(h, inplace=True)
         
-        # sigmoid activation for rgb
-        h = torch.sigmoid(h)
+        # # sigmoid activation for rgb
+        # h = torch.sigmoid(h)
 
-        if mask is not None:
-            rgbs[mask] = h.to(rgbs.dtype) # fp16 --> fp32
-        else:
-            rgbs = h
+        # if mask is not None:
+        #     rgbs[mask] = h.to(rgbs.dtype) # fp16 --> fp32
+        # else:
+        #     rgbs = h
 
-        return rgbs        
+        return geo_feat
 
     # optimizer utils
     def get_params(self, lr):
@@ -201,7 +220,7 @@ class NeRFNetwork(NeRFRenderer):
             {'params': self.encoder.parameters(), 'lr': lr},
             {'params': self.sigma_net.parameters(), 'lr': lr},
             {'params': self.encoder_dir.parameters(), 'lr': lr},
-            {'params': self.color_net.parameters(), 'lr': lr}, 
+            # {'params': [self.density_scale], 'lr': 10*lr},
         ]
         if self.bg_radius > 0:
             params.append({'params': self.encoder_bg.parameters(), 'lr': lr})
