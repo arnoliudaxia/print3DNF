@@ -6,7 +6,6 @@ from encoding import get_encoder
 from activation import trunc_exp
 from .renderer import NeRFRenderer
 
-
 class NeRFNetwork(NeRFRenderer):
     def __init__(self,
                  encoding="hashgrid",
@@ -99,7 +98,7 @@ class NeRFNetwork(NeRFRenderer):
             self.bg_net = None
 
 
-    def forward(self, x, d):
+    def forward(self, x, d): # 测试的时候
         # x: [N, 3], in [-bound, bound]
         # d: [N, 3], nomalized in [-1, 1]
 
@@ -119,11 +118,14 @@ class NeRFNetwork(NeRFRenderer):
 
         # color = (h.unsqueeze(-1) * self.print_color).sum(dim=1)
         sigma = trunc_exp(h[..., 0])
-        sigma = torch.clamp(sigma, 0, self.density_max_scale)
+        if self.density_max_scale!=-1:
+            sigma = torch.clamp(sigma, 0, self.density_max_scale)
         color = torch.clamp(h[..., [1, 2, 3]], 0, 1)
+        
+        # bp()
         return sigma, color
 
-    def density(self, x):
+    def density(self, x): # 训练的时候
         # x: [N, 3], in [-bound, bound]
 
         x = self.encoder(x, bound=self.bound)
@@ -147,7 +149,13 @@ class NeRFNetwork(NeRFRenderer):
         # geo_feat = torch.clamp(h[..., 3:6], 0, 1)
 
         sigma = trunc_exp(h[..., 0])
-        sigma = torch.clamp(sigma, 0, self.density_max_scale)
+        # print(sigma.max().item())
+        # 打印红色文本
+        # print("\033[91m" + str(sigma.max().item()) + "\033[0m")
+        
+        if self.density_max_scale!=-1:
+            sigma = torch.clamp(sigma, 0, self.density_max_scale)
+        # print("\033[91m" + str(sigma.max().item()) + "\033[0m")
         geo_feat = torch.clamp(h[..., [1, 2, 3]], 0, 1)
         
         
