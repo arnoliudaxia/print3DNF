@@ -194,7 +194,7 @@ def extract_volume_fields(bound_min, bound_max, resolution, query_func, S=128):
     Y = torch.linspace(bound_min[1], bound_max[1], resolution[1]).split(S)
     Z = torch.linspace(bound_min[2], bound_max[2], resolution[2]).split(S)
 
-    u = np.zeros(resolution+[6], dtype=np.float32)
+    u = np.zeros(resolution+[4], dtype=np.float32)
     with torch.no_grad():
         for xi, xs in enumerate(X):
             for yi, ys in enumerate(Y):
@@ -676,6 +676,45 @@ class Trainer(object):
         os.makedirs(os.path.join(save_folder, 'color'), exist_ok=True)
         os.makedirs(os.path.join(save_folder, 'density'), exist_ok=True)
 
+        # Define the directions you want to consider (e.g., 6 axis directions and 8 diagonal directions)
+        directions = [
+            torch.tensor([1., 0., 0.]), torch.tensor([-1., 0., 0.]),
+            torch.tensor([0., 1., 0.]), torch.tensor([0., -1., 0.]),
+            torch.tensor([0., 0., 1.]), torch.tensor([0., 0., -1.]),
+            torch.tensor([1., 1., 0.]), torch.tensor([-1., 1., 0.]),
+            torch.tensor([1., -1., 0.]), torch.tensor([-1., -1., 0.]),
+            torch.tensor([1., 0., 1.]), torch.tensor([-1., 0., 1.]),
+            torch.tensor([1., 0., -1.]), torch.tensor([-1., 0., -1.]),
+            torch.tensor([0., 1., 1.]), torch.tensor([0., -1., 1.]),
+            torch.tensor([0., 1., -1.]), torch.tensor([0., -1., -1.]),
+            torch.tensor([1., 1., 1.]), torch.tensor([-1., 1., 1.]),
+            torch.tensor([1., -1., 1.]), torch.tensor([-1., -1., 1.]),
+            torch.tensor([1., 1., -1.]), torch.tensor([-1., 1., -1.]),
+            torch.tensor([1., -1., -1.]), torch.tensor([-1., -1., -1.]),
+        ]
+        def query_func_mean(pts):
+            with torch.no_grad():
+                with torch.cuda.amp.autocast(enabled=self.fp16):
+                    dir = pts.new_zeros(pts.shape) 
+                    dir[:, 0] = 1
+                    swap_axis = edit_axis[0:3]
+                    pts[:, 0:3] = pts[:, swap_axis]
+                    sigma, color = self.model.forward(pts.to(self.device), dir.to(self.device))
+                    # breakpoint()
+                    # ! dir 是 [1,0,0]，拓展到更多方向的平均
+                    # 沿着坐标轴的6个加上八个卦限的中心方向
+                    sigma_sum = 0
+                    color_sum = 0
+                    for dir in directions:
+                        sigma, color = self.model.forward(pts.to(self.device), dir.unsqueeze(0).repeat(pts.shape[0], 1).to(self.device))
+                        sigma_sum += sigma
+                        color_sum += color
+                    # breakpoint()
+                    sigma_sum /= len(directions)
+                    color_sum /= len(directions)
+                    # sigma, color = self.model.forward(pts.to(self.device), dir.to(self.device))
+            return sigma_sum, color_sum
+        
         def query_func(pts):
             with torch.no_grad():
                 with torch.cuda.amp.autocast(enabled=self.fp16):
@@ -683,16 +722,11 @@ class Trainer(object):
                     dir[:, 0] = 1
                     swap_axis = edit_axis[0:3]
                     pts[:, 0:3] = pts[:, swap_axis]
-                    
-                    
-                    sigma, color = self.model.forward(pts.to(self.device), dir.to(self.device))
+                    sigma, color = self.model.forward(pts.to(self.device), dir.to(self.device))   
             return sigma, color
         
-        # edit_axis
-        
-        
+        # volume = extract_volume(np.array(bbox[0:3]), np.array(bbox[3:6]), resolution=resolution, query_func=query_func_mean)
         volume = extract_volume(np.array(bbox[0:3]), np.array(bbox[3:6]), resolution=resolution, query_func=query_func)
-        # volume = extract_volume(self.model.aabb_infer[:3], self.model.aabb_infer[3:], resolution=resolution, threshold=threshold, query_func=query_func)
 
 
         # saving...
@@ -705,22 +739,82 @@ class Trainer(object):
                 "delta": delta,
             }
             json.dump(data, json_file, ensure_ascii=False, indent=4)  # ensure_ascii=False 用于支持非 ASCII 字符
-        for i in tqdm.tqdm(range(z)):
-            img = volume[:, :, i, :]
-            img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3],  cv2.COLOR_RGB2BGR)
             
+            
+            
+        volume[:,:,:,3] # (242, 552, 1428)
+        flattenedVolume = volume[:, :, :, 3].flatten()
+    
+        import matplotlib.pyplot as plt
+
+
+        # Plot histogram
+        plt.figure(figsize=(10, 6))
+        plt.hist(flattenedVolume, bins=50, color='#c5617d', alpha=0.7)  # Convert to numpy for plotting
+
+        # Set logarithmic scale for the y-axis
+        plt.yscale('log')
+
+        # Add labels and title
+        plt.title("Distribution of Sigma (Log Scale)", fontsize=14)
+        plt.xlabel("Sigma Value", fontsize=12)
+        plt.ylabel("Frequency (Log Scale)", fontsize=12)
+
+        # Show grid and plot
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+        saveImgPath=f"{save_folder}/sigmaDistrubution.jpg"
+        plt.savefig(saveImgPath)
+        print(f"\033[32mSave sigmaDistrubution to {saveImgPath}\033[0m")
+        # breakpoint()
+
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def process_and_save_slice(i, volume, save_folder, delta, model):
+            img = volume[:, :, i, :]
+            img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3], cv2.COLOR_RGB2BGR)
+
+            # Save numpy array
             save_path = os.path.join(save_folder, f'array/{str(i).zfill(8)}.npy')
             np.save(save_path, img)
-            
-            img[:, :, 3] =  (1 - np.exp(-1 * delta * self.model.density_scale * img[:, :, 3]))
+
+            # Apply density transformation
+            img[:, :, 3] = (1 - np.exp(-1 * delta * model.density_scale * img[:, :, 3]))
+
+
             img[:, :, 3] /= img[:, :, 3].max()
             img *= 255
-            
-            # 保存为PNG文件 PNG图片仅用于预览
+
+            # Save PNG for color preview
             save_path = os.path.join(save_folder, f'color/{str(i).zfill(8)}.png')
-            cv2.imwrite(save_path, img[:, :, 0:3]*img[:, :, [3]]/255)
+            cv2.imwrite(save_path, img[:, :, 0:3] * img[:, :, [3]] / 255)
+
+            # Save PNG for density
             save_path = os.path.join(save_folder, f'density/{str(i).zfill(8)}.png')
             cv2.imwrite(save_path, img[:, :, 3])
+        
+        def parallelize_processing(volume, save_folder, z, delta, model):
+            with ThreadPoolExecutor() as executor:
+                # Using tqdm to show progress in parallel execution
+                list(tqdm.tqdm(executor.map(lambda i: process_and_save_slice(i, volume, save_folder, delta, model), range(z)), total=z))
+
+        parallelize_processing(volume, save_folder, z, delta, self.model)
+        
+        # for i in tqdm.tqdm(range(z)):
+        #     img = volume[:, :, i, :]
+        #     img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3],  cv2.COLOR_RGB2BGR)
+            
+        #     save_path = os.path.join(save_folder, f'array/{str(i).zfill(8)}.npy')
+        #     np.save(save_path, img)
+            
+        #     img[:, :, 3] =  (1 - np.exp(-1 * delta * self.model.density_scale * img[:, :, 3]))
+        #     img[:, :, 3] /= img[:, :, 3].max()
+        #     img *= 255
+            
+        #     # 保存为PNG文件 PNG图片仅用于预览
+        #     save_path = os.path.join(save_folder, f'color/{str(i).zfill(8)}.png')
+        #     cv2.imwrite(save_path, img[:, :, 0:3]*img[:, :, [3]]/255)
+        #     save_path = os.path.join(save_folder, f'density/{str(i).zfill(8)}.png')
+        #     cv2.imwrite(save_path, img[:, :, 3])
         
         self.log(f"==> Finished saving volume to {save_folder}.")
 
@@ -745,6 +839,7 @@ class Trainer(object):
             if self.workspace is not None and self.local_rank == 0:
                 self.save_checkpoint(full=True, best=False)
 
+            self.eval_interval = 10
             if self.epoch % self.eval_interval == 0:
                 self.evaluate_one_epoch(valid_loader)
                 self.save_checkpoint(full=False, best=True)

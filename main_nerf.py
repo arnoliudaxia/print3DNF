@@ -68,6 +68,12 @@ if __name__ == '__main__':
     parser.add_argument('--error_map', action='store_true', help="use error map to sample rays")
     parser.add_argument('--clip_text', type=str, default='', help="text input for CLIP guidance")
     parser.add_argument('--rand_pose', type=int, default=-1, help="<0 uses no rand pose, =0 only uses rand pose, >0 sample one rand pose every $ known poses")
+    
+    
+    ###my
+    parser.add_argument('--density_max_scale', type=int, default=100, help="Youjia")
+    parser.add_argument('--isoOrAniso', type=str, help="iso means no colorNet, vice versa ")
+    
 
     opt = parser.parse_args()
 
@@ -91,7 +97,12 @@ if __name__ == '__main__':
         assert opt.bg_radius <= 0, "background model is not implemented for --tcnn"
         from nerf.network_tcnn import NeRFNetwork
     else:
-        from nerf.network import NeRFNetwork
+        if opt.isoOrAniso=="iso":
+            from nerf.network import NeRFNetwork
+        elif opt.isoOrAniso=="aniso":
+            from nerf.network_aniso import NeRFNetwork
+        else:
+            raise()
 
     print(opt)
     
@@ -101,11 +112,12 @@ if __name__ == '__main__':
         encoding="hashgrid",
         bound=opt.bound,
         cuda_ray=opt.cuda_ray,
-        density_scale=1,
         min_near=opt.min_near,
         density_thresh=opt.density_thresh,
         bg_radius=opt.bg_radius,
+        density_max_scale=opt.density_max_scale,
     )
+    
     
     print(model)
 
