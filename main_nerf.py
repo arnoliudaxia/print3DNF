@@ -71,8 +71,8 @@ if __name__ == '__main__':
     
     
     ###my
-    parser.add_argument('--density_max_scale', type=int, default=100, help="Youjia")
-    parser.add_argument('--isoOrAniso', type=str, help="iso means no colorNet, vice versa ")
+    parser.add_argument('--density_max_scale', type=int, default=-1, help="Youjia")
+    parser.add_argument('--isoOrAniso', type=str, help="iso means no colorNet, vice versa ", default="aniso")
     
 
     opt = parser.parse_args()
@@ -146,6 +146,25 @@ if __name__ == '__main__':
             trainer.test(test_loader, write_video=True) # test and save video
             
     elif opt.save_volume:
+        
+        # 采样一些train里的direction
+        train_loader = NeRFDataset(opt, device="cpu", type='train').dataloader()
+
+        # Step 1: 收集所有的rays_d
+        rays_directions = []
+        for batch in train_loader:
+            # batch['rays_d'].shape #torch.Size([1, 4096, 3])
+            rays_directions.append(batch['rays_d'][0])  # 将每个batch的rays_d收集起来
+        # 将列表转为一个大tensor
+        rays_directions = torch.cat(rays_directions, dim=0)  # 现在是一个[总样本数, 4096, 3]的tensor
+        rays_directions = rays_directions.view(-1, 3)  # 将维度展平为[n, 3]形式
+        # 随机采样20个样本
+        num_samples = 20
+        random_indices = torch.randint(0, rays_directions.shape[0], (num_samples,))
+
+        # 使用这些索引来获取样本
+        sampled_rays_directions = rays_directions[random_indices]
+        
         
         metrics = [PSNRMeter(), LPIPSMeter(device=device)]
         trainer = Trainer('ngp', opt, model, device=device, workspace=opt.workspace, criterion=criterion, fp16=opt.fp16, metrics=metrics, use_checkpoint=opt.ckpt)

@@ -61,7 +61,7 @@ def plot_pointcloud(pc, color=None):
 class NeRFRenderer(nn.Module):
     def __init__(self,
                  bound=1,
-                 cuda_ray=False,
+                 cuda_ray=True,
                  density_scale=1, # scale up deltas (or sigmas), to make the density grid more sharp. larger value than 1 usually improves performance.
                  min_near=0.2,
                  density_thresh=0.01,
@@ -550,6 +550,8 @@ class NeRFRenderer(nn.Module):
             _run = self.run_cuda
         else:
             _run = self.run
+            
+        _run = self.run_cuda
 
         B, N = rays_o.shape[:2]
         device = rays_o.device

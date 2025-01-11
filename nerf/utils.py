@@ -664,7 +664,7 @@ class Trainer(object):
 
         self.log(f"==> Finished saving mesh.")
 
-    def save_volume(self, bbox, save_folder=None, resolution=[256, 256, 256], edit_axis = [0, 1, 2]):
+    def save_volume(self, bbox, save_folder=None, resolution=[256, 256, 256], edit_axis = [0, 1, 2], sampleDirs=[]):
 
         if save_folder is None:
             save_folder = os.path.join(self.workspace, 'volume', f'{self.name}_{self.epoch}')
@@ -692,6 +692,14 @@ class Trainer(object):
             torch.tensor([1., 1., -1.]), torch.tensor([-1., 1., -1.]),
             torch.tensor([1., -1., -1.]), torch.tensor([-1., -1., -1.]),
         ]
+        
+        if len(sampleDirs)>0:
+            directions=sampleDirs
+        
+        
+        delta = (bbox[5] - bbox[2])/ resolution[2]
+        
+        
         def query_func_mean(pts):
             with torch.no_grad():
                 with torch.cuda.amp.autocast(enabled=self.fp16):
@@ -707,6 +715,9 @@ class Trainer(object):
                     color_sum = 0
                     for dir in directions:
                         sigma, color = self.model.forward(pts.to(self.device), dir.unsqueeze(0).repeat(pts.shape[0], 1).to(self.device))
+                        mask = 1 - np.exp(-1 * delta * self.model.density_scale * sigma.detach().cpu().numpy())
+                        sigma[mask < 1e-3] = 0
+                        # sigma[mask < 10] = 0
                         sigma_sum += sigma
                         color_sum += color
                     # breakpoint()
@@ -725,8 +736,8 @@ class Trainer(object):
                     sigma, color = self.model.forward(pts.to(self.device), dir.to(self.device))   
             return sigma, color
         
-        # volume = extract_volume(np.array(bbox[0:3]), np.array(bbox[3:6]), resolution=resolution, query_func=query_func_mean)
-        volume = extract_volume(np.array(bbox[0:3]), np.array(bbox[3:6]), resolution=resolution, query_func=query_func)
+        volume = extract_volume(np.array(bbox[0:3]), np.array(bbox[3:6]), resolution=resolution, query_func=query_func_mean)
+        # volume = extract_volume(np.array(bbox[0:3]), np.array(bbox[3:6]), resolution=resolution, query_func=query_func)
 
 
         # saving...

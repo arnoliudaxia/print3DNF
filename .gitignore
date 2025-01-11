@@ -17,3 +17,14 @@ dnerf/network_basis_perpoint.py
 neus/
 
 workspace/
+
+temp*
+remove_*
+
+👑Train/
+🐲Anisotropy/
+🐲isotropy/
+🚯bin/
+🃏CUDA/
+🏓unmask/
+🐼0119
