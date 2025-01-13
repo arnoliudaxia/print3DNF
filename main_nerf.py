@@ -73,6 +73,8 @@ if __name__ == '__main__':
     ###my
     parser.add_argument('--density_max_scale', type=int, default=-1, help="Youjia")
     parser.add_argument('--isoOrAniso', type=str, help="iso means no colorNet, vice versa ", default="aniso")
+    parser.add_argument('--noMask', action='store_false')
+    parser.add_argument('--numViewsMean', type=int,default=20, help="How many views to adapt when extract volume")
     
 
     opt = parser.parse_args()
@@ -111,7 +113,7 @@ if __name__ == '__main__':
     model = NeRFNetwork(
         encoding="hashgrid",
         bound=opt.bound,
-        cuda_ray=opt.cuda_ray,
+        cuda_ray=True,
         min_near=opt.min_near,
         density_thresh=opt.density_thresh,
         bg_radius=opt.bg_radius,
@@ -159,7 +161,7 @@ if __name__ == '__main__':
         rays_directions = torch.cat(rays_directions, dim=0)  # 现在是一个[总样本数, 4096, 3]的tensor
         rays_directions = rays_directions.view(-1, 3)  # 将维度展平为[n, 3]形式
         # 随机采样20个样本
-        num_samples = 20
+        num_samples = opt.numViewsMean
         random_indices = torch.randint(0, rays_directions.shape[0], (num_samples,))
 
         # 使用这些索引来获取样本
@@ -177,7 +179,8 @@ if __name__ == '__main__':
         
         print(f"==> Printing object size is: {printing_size} (mm)")
         print(f"==> Volume resolution is: {volume_resolution}")
-        trainer.save_volume(volume_bbox, resolution=list(volume_resolution), edit_axis=opt.edit_axis)
+
+        trainer.save_volume(volume_bbox, resolution=list(volume_resolution), edit_axis=opt.edit_axis, sampleDirs=sampled_rays_directions, shouldMask=opt.noMask)
     
     else:
 
