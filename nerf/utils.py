@@ -30,7 +30,7 @@ from torch_ema import ExponentialMovingAverage
 from packaging import version as pver
 import lpips
 from torchmetrics.functional import structural_similarity_index_measure
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 
 def custom_meshgrid(*args):
@@ -193,8 +193,9 @@ def extract_volume_fields(bound_min, bound_max, resolution, query_func, S=128):
     X = torch.linspace(bound_min[0], bound_max[0], resolution[0]).split(S)
     Y = torch.linspace(bound_min[1], bound_max[1], resolution[1]).split(S)
     Z = torch.linspace(bound_min[2], bound_max[2], resolution[2]).split(S)
-
+    total_iterations = len(X) * len(Y) * len(Z)  # 总循环次数
     u = np.zeros(resolution+[4], dtype=np.float32)
+
     with torch.no_grad():
         for xi, xs in enumerate(X):
             for yi, ys in enumerate(Y):
@@ -206,6 +207,7 @@ def extract_volume_fields(bound_min, bound_max, resolution, query_func, S=128):
                     color = color.reshape(len(xs), len(ys), len(zs), 3).detach().cpu().numpy()
                     u[xi * S: xi * S + len(xs), yi * S: yi * S + len(ys), zi * S: zi * S + len(zs), [3]] = sigma
                     u[xi * S: xi * S + len(xs), yi * S: yi * S + len(ys), zi * S: zi * S + len(zs), 0:3] = color
+                        
     return u
 
 def extract_volume(bound_min, bound_max, resolution, query_func):
@@ -664,7 +666,7 @@ class Trainer(object):
 
         self.log(f"==> Finished saving mesh.")
 
-    def save_volume(self, bbox, save_folder=None, resolution=[256, 256, 256], edit_axis = [0, 1, 2], sampleDirs=[]):
+    def save_volume(self, bbox, save_folder=None, resolution=[256, 256, 256], edit_axis = [0, 1, 2], sampleDirs=[], shouldMask=True):
 
         if save_folder is None:
             save_folder = os.path.join(self.workspace, 'volume', f'{self.name}_{self.epoch}')
@@ -692,12 +694,11 @@ class Trainer(object):
             torch.tensor([1., 1., -1.]), torch.tensor([-1., 1., -1.]),
             torch.tensor([1., -1., -1.]), torch.tensor([-1., -1., -1.]),
         ]
-        
         if len(sampleDirs)>0:
             directions=sampleDirs
         
         
-        delta = (bbox[5] - bbox[2])/ resolution[2]
+        delta = (bbox[5] - bbox[2]) / resolution[2]
         
         
         def query_func_mean(pts):
@@ -708,7 +709,7 @@ class Trainer(object):
                     swap_axis = edit_axis[0:3]
                     pts[:, 0:3] = pts[:, swap_axis]
                     sigma, color = self.model.forward(pts.to(self.device), dir.to(self.device))
-                    # breakpoint()
+
                     # ! dir 是 [1,0,0]，拓展到更多方向的平均
                     # 沿着坐标轴的6个加上八个卦限的中心方向
                     sigma_sum = 0
@@ -716,27 +717,28 @@ class Trainer(object):
                     for dir in directions:
                         sigma, color = self.model.forward(pts.to(self.device), dir.unsqueeze(0).repeat(pts.shape[0], 1).to(self.device))
                         mask = 1 - np.exp(-1 * delta * self.model.density_scale * sigma.detach().cpu().numpy())
-                        sigma[mask < 1e-3] = 0
-                        # sigma[mask < 10] = 0
+                        if not shouldMask:
+                            sigma[mask < 1e-3] = 0
+
                         sigma_sum += sigma
                         color_sum += color
-                    # breakpoint()
+
                     sigma_sum /= len(directions)
                     color_sum /= len(directions)
-                    # sigma, color = self.model.forward(pts.to(self.device), dir.to(self.device))
+                    sigma_sum = sigma_sum * delta / 0.014
             return sigma_sum, color_sum
         
-        def query_func(pts):
-            with torch.no_grad():
-                with torch.cuda.amp.autocast(enabled=self.fp16):
-                    dir = pts.new_zeros(pts.shape) 
-                    dir[:, 0] = 1
-                    swap_axis = edit_axis[0:3]
-                    pts[:, 0:3] = pts[:, swap_axis]
-                    sigma, color = self.model.forward(pts.to(self.device), dir.to(self.device))   
-            return sigma, color
+        # def query_func(pts):
+        #     with torch.no_grad():
+        #         with torch.cuda.amp.autocast(enabled=self.fp16):
+        #             dir = pts.new_zeros(pts.shape) 
+        #             dir[:, 0] = 1
+        #             swap_axis = edit_axis[0:3]
+        #             pts[:, 0:3] = pts[:, swap_axis]
+        #             sigma, color = self.model.forward(pts.to(self.device), dir.to(self.device))   
+        #     return sigma, color
         
-        volume = extract_volume(np.array(bbox[0:3]), np.array(bbox[3:6]), resolution=resolution, query_func=query_func_mean)
+        # volume = extract_volume(np.array(bbox[0:3]), np.array(bbox[3:6]), resolution=resolution, query_func=query_func_mean)
         # volume = extract_volume(np.array(bbox[0:3]), np.array(bbox[3:6]), resolution=resolution, query_func=query_func)
 
 
@@ -753,65 +755,83 @@ class Trainer(object):
             
             
             
-        volume[:,:,:,3] # (242, 552, 1428)
-        flattenedVolume = volume[:, :, :, 3].flatten()
+        # volume[:,:,:,3] # (242, 552, 1428)
+        # flattenedVolume = volume[:, :, :, 3].flatten()
     
-        import matplotlib.pyplot as plt
+        # import matplotlib.pyplot as plt
 
 
-        # Plot histogram
-        plt.figure(figsize=(10, 6))
-        plt.hist(flattenedVolume, bins=50, color='#c5617d', alpha=0.7)  # Convert to numpy for plotting
+        # # Plot histogram
+        # plt.figure(figsize=(10, 6))
+        # plt.hist(flattenedVolume, bins=50, color='#c5617d', alpha=0.7)  # Convert to numpy for plotting
 
-        # Set logarithmic scale for the y-axis
-        plt.yscale('log')
+        # # Set logarithmic scale for the y-axis
+        # plt.yscale('log')
 
-        # Add labels and title
-        plt.title("Distribution of Sigma (Log Scale)", fontsize=14)
-        plt.xlabel("Sigma Value", fontsize=12)
-        plt.ylabel("Frequency (Log Scale)", fontsize=12)
+        # # Add labels and title
+        # plt.title("Distribution of Sigma (Log Scale)", fontsize=14)
+        # plt.xlabel("Sigma Value", fontsize=12)
+        # plt.ylabel("Frequency (Log Scale)", fontsize=12)
 
-        # Show grid and plot
-        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-        saveImgPath=f"{save_folder}/sigmaDistrubution.jpg"
-        plt.savefig(saveImgPath)
-        print(f"\033[32mSave sigmaDistrubution to {saveImgPath}\033[0m")
+        # # Show grid and plot
+        # plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+        # saveImgPath=f"{save_folder}/sigmaDistrubution.jpg"
+        # plt.savefig(saveImgPath)
+        # print(f"\033[32mSave sigmaDistrubution to {saveImgPath}\033[0m")
         # breakpoint()
 
         from concurrent.futures import ThreadPoolExecutor
         
-        def process_and_save_slice(i, volume, save_folder, delta, model):
-            img = volume[:, :, i, :]
+        def process_volume(i, bbox, delta, resolution, save_folder, query_func_mean, density_scale):
+            cur_z = bbox[2] + i * delta
+            cur_bbox = [bbox[0], bbox[1], cur_z, bbox[3], bbox[4], cur_z + delta]
+            cur_resolution = [resolution[0], resolution[1], 1]
+            volume = extract_volume(np.array(cur_bbox[0:3]), np.array(cur_bbox[3:6]), resolution=cur_resolution, query_func=query_func_mean)
+
+            img = volume[:, :, 0, :]
             img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3], cv2.COLOR_RGB2BGR)
 
-            # Save numpy array
+            # 保存 .npy 文件
             save_path = os.path.join(save_folder, f'array/{str(i).zfill(8)}.npy')
             np.save(save_path, img)
 
-            # Apply density transformation
-            img[:, :, 3] = (1 - np.exp(-1 * delta * model.density_scale * img[:, :, 3]))
+            # 处理透明度信息
+            # img[:, :, 3] = (1 - np.exp(-1 * delta * density_scale * img[:, :, 3]))
+            # img[:, :, 3] /= img[:, :, 3].max()
+            # img *= 255
+
+            # 保存 PNG 文件
+            # save_path = os.path.join(save_folder, f'color/{str(i).zfill(8)}.png')
+            # cv2.imwrite(save_path, img[:, :, 0:3] * img[:, :, [3]] / 255)
+            # save_path = os.path.join(save_folder, f'rgba/{str(i).zfill(8)}.png')
+            # cv2.imwrite(save_path, img[:, :, 0:4] / 255)
+            # save_path = os.path.join(save_folder, f'density/{str(i).zfill(8)}.png')
+            # cv2.imwrite(save_path, img[:, :, 3])
 
 
-            img[:, :, 3] /= img[:, :, 3].max()
-            img *= 255
-
-            # Save PNG for color preview
-            save_path = os.path.join(save_folder, f'color/{str(i).zfill(8)}.png')
-            cv2.imwrite(save_path, img[:, :, 0:3] * img[:, :, [3]] / 255)
-
-            # Save PNG for density
-            save_path = os.path.join(save_folder, f'density/{str(i).zfill(8)}.png')
-            cv2.imwrite(save_path, img[:, :, 3])
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            list(tqdm.tqdm(
+                executor.map(
+                    process_volume,
+                    range(z),
+                    [bbox] * z,
+                    [delta] * z,
+                    [resolution] * z,
+                    [save_folder] * z,
+                    [query_func_mean] * z,
+                    [self.model.density_scale] * z
+                ),
+                desc="Volume Extracting",
+                total=z
+            ))
         
-        def parallelize_processing(volume, save_folder, z, delta, model):
-            with ThreadPoolExecutor() as executor:
-                # Using tqdm to show progress in parallel execution
-                list(tqdm.tqdm(executor.map(lambda i: process_and_save_slice(i, volume, save_folder, delta, model), range(z)), total=z))
+        # for i in tqdm.tqdm(range(z), desc="Volume Extracting"):
+        #     cur_z = bbox[2] + i * delta
+        #     cur_bbox = [bbox[0], bbox[1], cur_z, bbox[3], bbox[4], cur_z + delta]
+        #     cur_resolution = [resolution[0], resolution[1], 1]
+        #     volume = extract_volume(np.array(cur_bbox[0:3]), np.array(cur_bbox[3:6]), resolution=cur_resolution, query_func=query_func_mean)
 
-        parallelize_processing(volume, save_folder, z, delta, self.model)
-        
-        # for i in tqdm.tqdm(range(z)):
-        #     img = volume[:, :, i, :]
+        #     img = volume[:, :, 0, :]
         #     img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3],  cv2.COLOR_RGB2BGR)
             
         #     save_path = os.path.join(save_folder, f'array/{str(i).zfill(8)}.npy')
@@ -824,6 +844,8 @@ class Trainer(object):
         #     # 保存为PNG文件 PNG图片仅用于预览
         #     save_path = os.path.join(save_folder, f'color/{str(i).zfill(8)}.png')
         #     cv2.imwrite(save_path, img[:, :, 0:3]*img[:, :, [3]]/255)
+        #     save_path = os.path.join(save_folder, f'rgba/{str(i).zfill(8)}.png')
+        #     cv2.imwrite(save_path, img[:, :, 0:4]/255)
         #     save_path = os.path.join(save_folder, f'density/{str(i).zfill(8)}.png')
         #     cv2.imwrite(save_path, img[:, :, 3])
         
