@@ -745,109 +745,41 @@ class Trainer(object):
         # saving...
         x, y, z = resolution
         delta = (bbox[5] - bbox[2])/ resolution[2]
-        with open(os.path.join(save_folder, f'params.json'), "w", encoding="utf-8") as json_file:
-            data = {
-                "bbox": bbox,
-                "resolution": [int(r) for r in resolution],
-                "delta": delta,
-            }
-            json.dump(data, json_file, ensure_ascii=False, indent=4)  # ensure_ascii=False 用于支持非 ASCII 字符
-            
-            
-            
-        # volume[:,:,:,3] # (242, 552, 1428)
-        # flattenedVolume = volume[:, :, :, 3].flatten()
-    
-        # import matplotlib.pyplot as plt
-
-
-        # # Plot histogram
-        # plt.figure(figsize=(10, 6))
-        # plt.hist(flattenedVolume, bins=50, color='#c5617d', alpha=0.7)  # Convert to numpy for plotting
-
-        # # Set logarithmic scale for the y-axis
-        # plt.yscale('log')
-
-        # # Add labels and title
-        # plt.title("Distribution of Sigma (Log Scale)", fontsize=14)
-        # plt.xlabel("Sigma Value", fontsize=12)
-        # plt.ylabel("Frequency (Log Scale)", fontsize=12)
-
-        # # Show grid and plot
-        # plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-        # saveImgPath=f"{save_folder}/sigmaDistrubution.jpg"
-        # plt.savefig(saveImgPath)
-        # print(f"\033[32mSave sigmaDistrubution to {saveImgPath}\033[0m")
-        # breakpoint()
-
-        from concurrent.futures import ThreadPoolExecutor
+        # with open(os.path.join(save_folder, f'params.json'), "w", encoding="utf-8") as json_file:
+        #     data = {
+        #         "bbox": bbox,
+        #         "resolution": [int(r) for r in resolution],
+        #         "delta": delta,
+        #     }
+        #     json.dump(data, json_file, ensure_ascii=False, indent=4) 
         
-        def process_volume(i, bbox, delta, resolution, save_folder, query_func_mean, density_scale):
+        for i in tqdm.tqdm(range(z), desc="Volume Extracting"):
             cur_z = bbox[2] + i * delta
             cur_bbox = [bbox[0], bbox[1], cur_z, bbox[3], bbox[4], cur_z + delta]
             cur_resolution = [resolution[0], resolution[1], 1]
             volume = extract_volume(np.array(cur_bbox[0:3]), np.array(cur_bbox[3:6]), resolution=cur_resolution, query_func=query_func_mean)
 
             img = volume[:, :, 0, :]
-            img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3], cv2.COLOR_RGB2BGR)
+            img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3],  cv2.COLOR_RGB2BGR)
 
-            # 保存 .npy 文件
-            save_path = os.path.join(save_folder, f'array/{str(i).zfill(8)}.npy')
-            np.save(save_path, img)
+            
+            save_path = os.path.join(save_folder, f'array/{str(i).zfill(8)}.npz')
+            np.savez_compressed(save_path, img)
+            # 动态分配数组
 
-            # 处理透明度信息
-            # img[:, :, 3] = (1 - np.exp(-1 * delta * density_scale * img[:, :, 3]))
+        
+        
+            
+            # 保存为PNG文件 PNG图片仅用于预览
+            # img[:, :, 3] =  (1 - np.exp(-1 * delta * self.model.density_scale * img[:, :, 3]))
             # img[:, :, 3] /= img[:, :, 3].max()
             # img *= 255
-
-            # 保存 PNG 文件
             # save_path = os.path.join(save_folder, f'color/{str(i).zfill(8)}.png')
-            # cv2.imwrite(save_path, img[:, :, 0:3] * img[:, :, [3]] / 255)
+            # cv2.imwrite(save_path, img[:, :, 0:3]*img[:, :, [3]]/255)
             # save_path = os.path.join(save_folder, f'rgba/{str(i).zfill(8)}.png')
-            # cv2.imwrite(save_path, img[:, :, 0:4] / 255)
+            # cv2.imwrite(save_path, img[:, :, 0:4]/255)
             # save_path = os.path.join(save_folder, f'density/{str(i).zfill(8)}.png')
             # cv2.imwrite(save_path, img[:, :, 3])
-
-
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            list(tqdm.tqdm(
-                executor.map(
-                    process_volume,
-                    range(z),
-                    [bbox] * z,
-                    [delta] * z,
-                    [resolution] * z,
-                    [save_folder] * z,
-                    [query_func_mean] * z,
-                    [self.model.density_scale] * z
-                ),
-                desc="Volume Extracting",
-                total=z
-            ))
-        
-        # for i in tqdm.tqdm(range(z), desc="Volume Extracting"):
-        #     cur_z = bbox[2] + i * delta
-        #     cur_bbox = [bbox[0], bbox[1], cur_z, bbox[3], bbox[4], cur_z + delta]
-        #     cur_resolution = [resolution[0], resolution[1], 1]
-        #     volume = extract_volume(np.array(cur_bbox[0:3]), np.array(cur_bbox[3:6]), resolution=cur_resolution, query_func=query_func_mean)
-
-        #     img = volume[:, :, 0, :]
-        #     img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3],  cv2.COLOR_RGB2BGR)
-            
-        #     save_path = os.path.join(save_folder, f'array/{str(i).zfill(8)}.npy')
-        #     np.save(save_path, img)
-            
-        #     img[:, :, 3] =  (1 - np.exp(-1 * delta * self.model.density_scale * img[:, :, 3]))
-        #     img[:, :, 3] /= img[:, :, 3].max()
-        #     img *= 255
-            
-        #     # 保存为PNG文件 PNG图片仅用于预览
-        #     save_path = os.path.join(save_folder, f'color/{str(i).zfill(8)}.png')
-        #     cv2.imwrite(save_path, img[:, :, 0:3]*img[:, :, [3]]/255)
-        #     save_path = os.path.join(save_folder, f'rgba/{str(i).zfill(8)}.png')
-        #     cv2.imwrite(save_path, img[:, :, 0:4]/255)
-        #     save_path = os.path.join(save_folder, f'density/{str(i).zfill(8)}.png')
-        #     cv2.imwrite(save_path, img[:, :, 3])
         
         self.log(f"==> Finished saving volume to {save_folder}.")
 
