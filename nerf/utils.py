@@ -753,6 +753,8 @@ class Trainer(object):
         #     }
         #     json.dump(data, json_file, ensure_ascii=False, indent=4) 
         
+        
+        imgs=[]
         for i in tqdm.tqdm(range(z), desc="Volume Extracting"):
             cur_z = bbox[2] + i * delta
             cur_bbox = [bbox[0], bbox[1], cur_z, bbox[3], bbox[4], cur_z + delta]
@@ -760,12 +762,25 @@ class Trainer(object):
             volume = extract_volume(np.array(cur_bbox[0:3]), np.array(cur_bbox[3:6]), resolution=cur_resolution, query_func=query_func_mean)
 
             img = volume[:, :, 0, :]
-            img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3],  cv2.COLOR_RGB2BGR)
+            img[:, :, 0:3] = cv2.cvtColor(img[:, :, 0:3],  cv2.COLOR_RGB2BGR)            
+            imgs.append(img.astype(np.float16))
 
             
-            save_path = os.path.join(save_folder, f'array/{str(i).zfill(8)}.npz')
-            np.savez_compressed(save_path, img)
+            # save_path = os.path.join(save_folder, f'array/{str(i).zfill(8)}.npz')
+            # np.savez_compressed(save_path, img)
             # 动态分配数组
+            
+        imgs=np.array(imgs)
+        # save_path = os.path.join(save_folder, f'array/allData.npz')
+        # np.savez_compressed(save_path, imgs)
+        
+        # percentile_90 = np.percentile(imgs[:,:,:,3].flatten(), 66)
+        # imgs[imgs[:,:,:,3] < percentile_90] = 0
+    
+        save_path = os.path.join(save_folder, f'array/allData.npy')
+    
+        np.save(save_path, imgs)
+        
 
         
         
