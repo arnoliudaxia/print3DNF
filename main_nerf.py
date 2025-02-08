@@ -2,7 +2,9 @@ import torch
 import argparse
 
 from nerf.provider import NeRFDataset
-from nerf.gui import NeRFGUI
+import os
+if os.environ.get('DISPLAY', '') != '':
+    from nerf.gui import NeRFGUI
 from nerf.utils import *
 
 from functools import partial
@@ -71,7 +73,7 @@ if __name__ == '__main__':
     
     
     ###my
-    parser.add_argument('--density_max_scale', type=int, default=-1, help="Youjia")
+    parser.add_argument('--density_max_scale', type=int, default=-1, help="Deprecated, no longer limits density during training")
     parser.add_argument('--isoOrAniso', type=str, help="iso means no colorNet, vice versa ", default="aniso")
     parser.add_argument('--noMask', action='store_false')
     parser.add_argument('--numViewsMean', type=int,default=20, help="How many views to adapt when extract volume")
@@ -128,7 +130,7 @@ if __name__ == '__main__':
     #criterion = torch.nn.HuberLoss(reduction='none', beta=0.1) # only available after torch 1.10 ?
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
+
     if opt.test:
         
         metrics = [PSNRMeter(), LPIPSMeter(device=device)]
@@ -145,13 +147,12 @@ if __name__ == '__main__':
             if test_loader.has_gt:
                 trainer.evaluate(test_loader) # blender has gt, so evaluate it.
     
-            trainer.test(test_loader, write_video=True) # test and save video
+            trainer.test(test_loader, write_video=False) #! test and save video
             
     elif opt.save_volume:
         
         # 采样一些train里的direction
         train_loader = NeRFDataset(opt, device="cpu", type='train').dataloader()
-
         # Step 1: 收集所有的rays_d
         rays_directions = []
         for batch in train_loader:
@@ -166,6 +167,7 @@ if __name__ == '__main__':
 
         # 使用这些索引来获取样本
         sampled_rays_directions = rays_directions[random_indices]
+        # sampled_rays_directions = torch.tensor([[-8.0199050e-02, -6.9577720e-03, 9.675459e-01]]) #! hack for fern
         
         
         metrics = [PSNRMeter(), LPIPSMeter(device=device)]
@@ -179,7 +181,6 @@ if __name__ == '__main__':
         
         print(f"==> Printing object size is: {printing_size} (mm)")
         print(f"==> Volume resolution is: {volume_resolution}")
-
         trainer.save_volume(volume_bbox, resolution=list(volume_resolution), edit_axis=opt.edit_axis, sampleDirs=sampled_rays_directions, shouldMask=opt.noMask)
     
     else:

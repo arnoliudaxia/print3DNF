@@ -1,15 +1,12 @@
-name: torch-ngp
+name: print3DNerf
 channels:
-  - pytorch
   - conda-forge
 dependencies:
   - python
-  - cudatoolkit=11.3
   - ninja
   - trimesh
   - opencv
   - tensorboardX
-  - pytorch
   - numpy 
   - pandas
   - tqdm
@@ -24,4 +21,5 @@ dependencies:
     - PyMCubes
     - pysdf
     - dearpygui
+    - torchmetrics
     - git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
