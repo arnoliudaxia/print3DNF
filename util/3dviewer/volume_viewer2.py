@@ -1,7 +1,15 @@
+
+"""
+Arnoliu写的基于ployscope的3D体积查看器
+"""
+
+import cv2
 import numpy as np
 from PIL import Image
 import os
 import argparse
+
+from tqdm import tqdm
 
 def main():
     parser = argparse.ArgumentParser(description='View 3D volume from stack of PNG images')
@@ -9,7 +17,7 @@ def main():
     parser.add_argument('--x-scale', type=float, default=0.042333, help='Scale factor for width (default: 1.0)')
     parser.add_argument('--y-scale', type=float, default=0.0846666, help='Scale factor for height (default: 1.0)')
     parser.add_argument('--z-scale', type=float, default=0.014, help='Scale factor for layer spacing (default: 1.0)')
-    parser.add_argument('--rgba', action='store_true', help='Use RGBA mode instead of grayscale')
+    
     parser.add_argument('--transparent', action='store_true', help='Allow fully transparent pixels (alpha=0) to be invisible')
     parser.add_argument('--render', action='store_true', help='Render a high-resolution image with transparent background')
     
@@ -28,6 +36,7 @@ def main():
     else:
         DataType = "half"
         image_files = sorted([f for f in os.listdir(args.image_dir) if f.endswith('.png')])
+        # image_files=image_files[0:10]
         if not image_files:
             raise ValueError("No PNG images found in the directory")
         # Load first image to get dimensions
@@ -36,10 +45,26 @@ def main():
         depth = len(image_files)
         # 构造一个3D的array
         volume = np.zeros((depth, height, width, 4), dtype=np.uint8)
-        for i, img_file in enumerate(image_files):
+        # for i, img_file in enumerate(image_files):
+        #     img = Image.open(os.path.join(args.image_dir, img_file)).convert('RGBA')
+        #     volume[i] = np.array(img)
+        # 创建4x4的平均卷积核
+        kernel_size = 4
+        kernel = np.ones((kernel_size, kernel_size), np.float32) / (kernel_size * kernel_size)
+
+        # 修改后的图片加载部分，对RGBA四个通道一起应用4x4平均卷积
+        for i, img_file in tqdm(enumerate(image_files)):
+            # 加载图片
             img = Image.open(os.path.join(args.image_dir, img_file)).convert('RGBA')
-            volume[i] = np.array(img)
-    
+            img_array = np.array(img)
+            
+            # 对RGBA四个通道分别应用4x4平均卷积
+            for c in range(4):  # 处理所有4个通道，包括Alpha
+                img_array[:, :, c] = cv2.filter2D(img_array[:, :, c], -1, kernel)
+            
+            # 存储到volume中
+            volume[i] = img_array
+                
     if args.presetScenen=="fern":
         volume=volume[-800:-1,...]
         
@@ -70,7 +95,7 @@ def main():
     # Initialize polyscope
     ps.init()
     # `my_points` is a Nx3 numpy array
-    ps_cloud = ps.register_point_cloud("my points", point_cloud_coords, point_render_mode='quad', radius=0.00033) # 14比较贴合实际
+    ps_cloud = ps.register_point_cloud("my points", point_cloud_coords, point_render_mode='quad', radius=0.0014) # 14比较贴合实际
     if DataType == "RGB":
         ps_cloud.add_scalar_quantity("trans", point_cloud_transpraency)
         ps_cloud.set_transparency_quantity("trans")

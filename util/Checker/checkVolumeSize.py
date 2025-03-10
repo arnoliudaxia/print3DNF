@@ -7,11 +7,19 @@ if len(sys.argv) < 2:
     print("Usage: python checkVolumeSize.py <directory>")
     sys.exit(1)
 
-directory = sys.argv[1]
-files = [f for f in os.listdir(directory) if f.endswith('.npy')]
+path = sys.argv[1]
+
+if os.path.isdir(path):
+    files = [f for f in os.listdir(path) if f.endswith('.npy')]
+elif os.path.isfile(path):
+    files = [path]
+else:
+    print("Invalid path")
+    sys.exit(1)
+
 
 for file in files:
-    data = np.load(os.path.join(directory, file))
+    data = np.load(os.path.join(path, file))
 
     z = 0.014
     y = z * 2

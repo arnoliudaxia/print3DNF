@@ -1,3 +1,7 @@
+
+"""
+Ten写的基于VTK的3D体积查看器
+"""
 import vtk
 import numpy as np
 from PIL import Image
