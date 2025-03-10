@@ -6,6 +6,7 @@ from tqdm import tqdm
 import os
 from scipy.optimize import fsolve, least_squares
 import json
+import torch
 
 K = {}
 S = {}
@@ -62,7 +63,7 @@ def KMmodel(K, S, x):
     
 #     return R, T
 
-def calculate_rgb(wavelengths, spectrum):
+def calculate_rgb(wavelengths, spectrum): 
     """
     Calculate RGB values from spectrum data using the colour package
     """
@@ -91,7 +92,7 @@ def calculate_rgb(wavelengths, spectrum):
     rgb = colour.XYZ_to_sRGB(XYZ / 100.0)  # Divide by 100 to convert from percentage
     
     # Ensure values are between 0 and 1
-    rgb = np.clip(rgb, 0, 1)
+    #! rgb = np.clip(rgb, 0, 1)
     
     return rgb
 
@@ -146,7 +147,7 @@ def calculate_rgb(wavelengths, spectrum):
 #     return RGB
 
 
-def concentration_to_rgbd(concentration):
+def concentration_to_rgbd(concentration): #! 造一点数据
     '''
     concentration: [c, m, y, k, w, clear]
     '''
@@ -165,6 +166,7 @@ def concentration_to_rgbd(concentration):
     density = density * (1 - concentration[5])
 
     return np.concatenate([C_rgb, [density]])
+
 
 # def concentration_to_rgbd_image(concentration):
 #     '''
@@ -299,6 +301,78 @@ def rgb_to_concentration(rgb_array):
     return concentration
 
 
+def rgb_to_concentration_torch(rgb_array):
+    # 将输入转换为 PyTorch 张量并移动到 GPU
+
+    # 计算 floor 和 ceil
+    r_floor = torch.floor(rgb_array[:, 0] * 10) / 10
+    r_ceil = torch.ceil(rgb_array[:, 0] * 10) / 10
+    g_floor = torch.floor(rgb_array[:, 1] * 10) / 10
+    g_ceil = torch.ceil(rgb_array[:, 1] * 10) / 10
+    b_floor = torch.floor(rgb_array[:, 2] * 10) / 10
+    b_ceil = torch.ceil(rgb_array[:, 2] * 10) / 10
+
+    # 生成所有可能的组合
+    nearest_values = torch.stack([
+        torch.stack([r_floor, g_floor, b_floor], dim=1),
+        torch.stack([r_floor, g_floor, b_ceil], dim=1),
+        torch.stack([r_floor, g_ceil, b_floor], dim=1),
+        torch.stack([r_floor, g_ceil, b_ceil], dim=1),
+        torch.stack([r_ceil, g_floor, b_floor], dim=1),
+        torch.stack([r_ceil, g_floor, b_ceil], dim=1),
+        torch.stack([r_ceil, g_ceil, b_floor], dim=1),
+        torch.stack([r_ceil, g_ceil, b_ceil], dim=1)
+    ], dim=1)
+
+    def trilinear_interpolation(rgb, values):
+        r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
+        r0, g0, b0 = values[:, 0, 0], values[:, 0, 1], values[:, 0, 2]
+
+        def lerp(v0, v1, t):
+            return v0 + t * (v1 - v0)
+
+        def interpolate(c000, c001, c010, c011, c100, c101, c110, c111):
+            c00 = lerp(c000, c001, (b - b0) / rgb_to_concentration_step)
+            c01 = lerp(c010, c011, (b - b0) / rgb_to_concentration_step)
+            c10 = lerp(c100, c101, (b - b0) / rgb_to_concentration_step)
+            c11 = lerp(c110, c111, (b - b0) / rgb_to_concentration_step)
+
+            c0 = lerp(c00, c01, (g - g0) / rgb_to_concentration_step)
+            c1 = lerp(c10, c11, (g - g0) / rgb_to_concentration_step)
+            return lerp(c0, c1, (r - r0) / rgb_to_concentration_step)
+
+        def value_to_index(value):
+            return (torch.div(value[:, 0], rgb_to_concentration_step, rounding_mode='floor') + 1) * ((rgb_to_concentration_interpolate+1)**2) + \
+                   (torch.div(value[:, 1], rgb_to_concentration_step, rounding_mode='floor') + 1) * (rgb_to_concentration_interpolate+1) + \
+                   (torch.div(value[:, 2], rgb_to_concentration_step, rounding_mode='floor') + 1)
+
+        indices = value_to_index(values.reshape(-1, 3)).long()
+        c_values = torch.tensor(rgb_to_concentration_map.iloc[indices.cpu()].values[:, 3:12], device='cuda').reshape(-1, 8, 9)
+
+        c_c = interpolate(c_values[:, 0, 0], c_values[:, 1, 0], c_values[:, 2, 0], c_values[:, 3, 0],
+                          c_values[:, 4, 0], c_values[:, 5, 0], c_values[:, 6, 0], c_values[:, 7, 0])
+        c_m = interpolate(c_values[:, 0, 1], c_values[:, 1, 1], c_values[:, 2, 1], c_values[:, 3, 1],
+                          c_values[:, 4, 1], c_values[:, 5, 1], c_values[:, 6, 1], c_values[:, 7, 1])
+        c_y = interpolate(c_values[:, 0, 2], c_values[:, 1, 2], c_values[:, 2, 2], c_values[:, 3, 2],
+                          c_values[:, 4, 2], c_values[:, 5, 2], c_values[:, 6, 2], c_values[:, 7, 2])
+        c_k = interpolate(c_values[:, 0, 3], c_values[:, 1, 3], c_values[:, 2, 3], c_values[:, 3, 3],
+                          c_values[:, 4, 3], c_values[:, 5, 3], c_values[:, 6, 3], c_values[:, 7, 3])
+        c_w = interpolate(c_values[:, 0, 4], c_values[:, 1, 4], c_values[:, 2, 4], c_values[:, 3, 4],
+                          c_values[:, 4, 4], c_values[:, 5, 4], c_values[:, 6, 4], c_values[:, 7, 4])
+        p_r = interpolate(c_values[:, 0, 5], c_values[:, 1, 5], c_values[:, 2, 5], c_values[:, 3, 5],
+                          c_values[:, 4, 5], c_values[:, 5, 5], c_values[:, 6, 5], c_values[:, 7, 5])
+        p_g = interpolate(c_values[:, 0, 6], c_values[:, 1, 6], c_values[:, 2, 6], c_values[:, 3, 6],
+                          c_values[:, 4, 6], c_values[:, 5, 6], c_values[:, 6, 6], c_values[:, 7, 6])
+        p_b = interpolate(c_values[:, 0, 7], c_values[:, 1, 7], c_values[:, 2, 7], c_values[:, 3, 7],
+                          c_values[:, 4, 7], c_values[:, 5, 7], c_values[:, 6, 7], c_values[:, 7, 7])
+        p_d = interpolate(c_values[:, 0, 8], c_values[:, 1, 8], c_values[:, 2, 8], c_values[:, 3, 8],
+                          c_values[:, 4, 8], c_values[:, 5, 8], c_values[:, 6, 8], c_values[:, 7, 8])
+
+        return torch.stack([c_c, c_m, c_y, c_k, c_w, torch.zeros_like(c_c)], dim=1), torch.stack([p_r, p_g, p_b, p_d], dim=1)
+
+    concentration = trilinear_interpolation(rgb_array, nearest_values)
+    return concentration
+
 def adjust_density(concentration, target_rgbd):
 
     def calculate_kw_rate(brightness):
@@ -332,11 +406,90 @@ def adjust_density(concentration, target_rgbd):
 
     color_rate = target_density / density
     concentration = np.where(
-        density[:, None] < target_density[:, None],
+        density[:, None] < target_density[:, None] - 1e-3,
         concentration * (1 - add_rate[:, None]) + np.column_stack([np.zeros_like(k_rate), np.zeros_like(k_rate), np.zeros_like(k_rate), k_rate, w_rate, np.zeros_like(k_rate)]) * add_rate[:, None],
         np.column_stack([concentration[:, :5] * (color_rate)[:, None], 1 - (color_rate)])
     )
     return concentration, concentration_to_density(concentration)
+
+
+
+def adjust_density_ablation(concentration, target_rgbd):
+    def calculate_kw_rate(brightness):
+        brightness_indices = (brightness * brightness_to_kw_interpolate).long()
+        k_rate = torch.tensor(brightness_to_kw_concentration_map.iloc[brightness_indices.cpu()]['k_rate'].values, device='cuda')
+        w_rate = 1 - k_rate
+        return k_rate, w_rate
+
+    def concentration_to_density(concentration):
+        density_rgb = torch.matmul(concentration, torch.tensor(cmykwe_density_rgb, device='cuda'))
+        alpha_rgb = 1 - torch.exp(-density_rgb * z)
+        alpha = alpha_rgb.mean(dim=1)
+        density = -torch.log(1 - alpha) / z
+        return density
+
+    # 将输入转换为 PyTorch 张量并移动到 GPU
+
+    density = concentration_to_density(concentration)
+
+    target_density = target_rgbd[:, 3]
+    brightness = target_rgbd[:, :3].mean(dim=1)
+
+    k_rate, w_rate = calculate_kw_rate(brightness)
+
+    kw_density = concentration_to_density(torch.stack([torch.zeros_like(k_rate), torch.zeros_like(k_rate), torch.zeros_like(k_rate), k_rate, w_rate, torch.zeros_like(k_rate)], dim=1))
+
+    add_rate = (target_density - density) / (kw_density - density)
+    # print(add_rate.max(), add_rate.min())
+    add_rate = torch.clamp(add_rate, 0, 0)  # 0.3 is the max rate, magicnum
+
+    color_rate = target_density / density
+    concentration = torch.where(
+        density[:, None] < target_density[:, None],
+        concentration * (1 - add_rate[:, None]) + torch.stack([torch.zeros_like(k_rate), torch.zeros_like(k_rate), torch.zeros_like(k_rate), k_rate, w_rate, torch.zeros_like(k_rate)], dim=1) * add_rate[:, None],
+        torch.cat([concentration[:, :5] * color_rate[:, None], 1 - color_rate[:, None]], dim=1)
+    )
+    concentration[:, 0:2] *= 10
+    concentration = concentration / concentration.sum(dim=1, keepdim=True)
+    return concentration, concentration_to_density(concentration)
+
+
+def adjust_density_torch(concentration, target_rgbd):
+    def calculate_kw_rate(brightness):
+        brightness_indices = (brightness * brightness_to_kw_interpolate).long()
+        k_rate = torch.tensor(brightness_to_kw_concentration_map.iloc[brightness_indices.cpu()]['k_rate'].values, device='cuda')
+        w_rate = 1 - k_rate
+        return k_rate, w_rate
+
+    def concentration_to_density(concentration):
+        density_rgb = torch.matmul(concentration, torch.tensor(cmykwe_density_rgb, device='cuda'))
+        alpha_rgb = 1 - torch.exp(-density_rgb * z)
+        alpha = alpha_rgb.mean(dim=1)
+        density = -torch.log(1 - alpha) / z
+        return density
+
+    # 将输入转换为 PyTorch 张量并移动到 GPU
+
+    density = concentration_to_density(concentration)
+
+    target_density = target_rgbd[:, 3]
+    brightness = target_rgbd[:, :3].mean(dim=1)
+
+    k_rate, w_rate = calculate_kw_rate(brightness)
+
+    kw_density = concentration_to_density(torch.stack([torch.zeros_like(k_rate), torch.zeros_like(k_rate), torch.zeros_like(k_rate), k_rate, w_rate, torch.zeros_like(k_rate)], dim=1))
+
+    add_rate = (target_density - density) / (kw_density - density)
+    add_rate = torch.clamp(add_rate, 0, 0.3)  # 0.3 is the max rate, magicnum
+
+    color_rate = target_density / density
+    concentration = torch.where(
+        density[:, None] < target_density[:, None],
+        concentration * (1 - add_rate[:, None]) + torch.stack([torch.zeros_like(k_rate), torch.zeros_like(k_rate), torch.zeros_like(k_rate), k_rate, w_rate, torch.zeros_like(k_rate)], dim=1) * add_rate[:, None],
+        torch.cat([concentration[:, :5] * color_rate[:, None], 1 - color_rate[:, None]], dim=1)
+    )
+    return concentration, concentration_to_density(concentration)
+
 
 def rgbd_to_concentration(rgbd):
     rgb = rgbd[:, :3]
@@ -345,57 +498,28 @@ def rgbd_to_concentration(rgbd):
     pred_rgbd[:, 3] = new_density
     return concentration, pred_rgbd
 
+def rgbd_to_concentration_torch_ablation(rgbd):
+    rgb = rgbd[:, :3]
+    concentration, pred_rgbd = rgb_to_concentration_torch(rgb)
+    concentration, new_density = adjust_density_ablation(concentration, rgbd)
+    pred_rgbd[:, 3] = new_density
+    return concentration, pred_rgbd
 
-# if __name__ == "__main__":
+def rgbd_to_concentration_figure(rgbd):
+    rgb = rgbd[:, :3]
+    concentration_step1, pred_rgbd = rgb_to_concentration_torch(rgb)
+    concentration, new_density = adjust_density_torch(concentration_step1, rgbd)
+    pred_rgbd[:, 3] = new_density
+    return concentration, pred_rgbd, concentration_step1
 
-
-    # wavelengths = np.arange(300, 801, 1)  # 波长范围 400-700nm, 间隔 10nm
-    # # spectra = np.random.rand(3, len(wavelengths))  # 随机生成 5 个样本的光谱数据
-    # for color in ['c', 'm', 'y', 'k', 'w']:
-    #     data = pd.read_csv(f'./color/data/calib_data/{color}.csv')
-    #     K[color], S[color] = data['K'].values, data['S'].values
-    #     spectra = data['R'].values.reshape(1, -1)
-        
-
-    #     # 计算 RGB
-    #     # rgb_values = calculate_rgb_vectorized(wavelengths, spectra)
-
-    #     # print(rgb_values)
-
-
-    #     for i in range(len(spectra)):
-    #         print(calculate_rgb(wavelengths, spectra[i]))
-
-
-    # rgbds = np.array([
-    #     [0.11, 0.22, 0.99, 0.1],
-    #     [0.22, 0.33, 0.44, 1],
-    #     [0.47556596,0.4282674,0.48980536, 10],
-    #     [0.4,0.7,0.8, 100]
-    # ])
-    # import time
-    # start_time = time.time()    
-    # rgbds = np.random.rand(10000, 4)
-    # concentrations, pred_rgbds = rgb_to_concentration(rgbds[:, :3])
-    # end_time = time.time()
-
-    # # print(concentrations)
-    # # for concentration in concentrations:
-    # #     print(concentration_to_rgbd(concentration))
-    # # print('--------------------------------')
-    # # for concentration in concentrations:
-    # #     print(concentration_to_rgbd(concentration))
-    # # exit()
-    # concentrations, new_density = adjust_density(concentrations, rgbds)
-    # # print(concentrations)
-    # print(f"Time taken: {end_time - start_time} seconds")
-
-
-
-    # print(rgbd_to_concentration(rgbds))
-
-    # for concentration in concentrations:
-    #     print(concentration_to_rgbd(concentration))
+def rgbd_to_concentration_torch(rgbd):
+    rgb = rgbd[:, :3]
+    concentration, pred_rgbd = rgb_to_concentration_torch(rgb)
+    breakpoint()
+    
+    # concentration, new_density = adjust_density_torch(concentration, rgbd)
+    # pred_rgbd[:, 3] = new_density
+    return concentration, pred_rgbd
 
 
 
@@ -460,5 +584,4 @@ if __name__ == "__main__":
 
     # 将 DataFrame 写入 CSV 文件
     df.to_csv('color/data/color_map/brightness_kw_rates.csv', index=False)
-
 

@@ -123,74 +123,74 @@ def brightness_to_kw_concentration_least_square(target_brightness):
 
 if __name__ == "__main__":
 
-    # os.makedirs('color/data/color_map', exist_ok=True)
-
-    # results = []
-
-    # # 计算总的迭代次数
-    # total_iterations = 11 * 11 * 11
-
-    # # rgb = np.array([1, 1, 1])
-    # # concentration = rgb_to_concentration(rgb)
-    # # pred_rgbd = concentration_to_rgbd(concentration)
-    # # print(concentration)
-    # # print(pred_rgbd)
-    # # exit()
-
-    # # 使用 tqdm 包装最内层循环以显示进度条
-    # with tqdm(total=total_iterations, desc="Processing RGB values") as pbar:
-    #     for r in range(11):
-    #         for g in range(11):
-    #             for b in range(11):
-    #                 rgb = np.array([r, g, b]) / 10
-    #                 concentration = rgb_to_concentration_least_square(rgb)
-    #                 pred_rgbd = concentration_to_rgbd(concentration)
-                    
-    #                 # 将结果添加到列表中
-    #                 results.append({
-    #                     'r': rgb[0],
-    #                     'g': rgb[1],
-    #                     'b': rgb[2],
-    #                     'c_c': concentration[0],
-    #                     'c_m': concentration[1],
-    #                     'c_y': concentration[2],
-    #                     'c_k': concentration[3],
-    #                     'c_w': concentration[4],
-    #                     'pred_r': pred_rgbd[0],
-    #                     'pred_g': pred_rgbd[1],
-    #                     'pred_b': pred_rgbd[2],
-    #                     'pred_d': pred_rgbd[3]
-    #                 })
-
-    #                 # 更新进度条
-    #                 pbar.update(1)
-
-    # # 创建 DataFrame
-    # df = pd.DataFrame(results)
-
-    # # 将 DataFrame 写入 CSV 文件
-    # df.to_csv('color/data/color_map/10.csv', index=False)
-
+    os.makedirs('color/data/color_map', exist_ok=True)
 
     results = []
 
-    for i in range(101):
-        brightness = i / 100
-        concentration = brightness_to_kw_concentration_least_square(brightness)
-        k_rate = concentration[0]
-        w_rate = concentration[1]
-        results.append({
-            'brightness': brightness,
-            'k_rate': k_rate,
-            'w_rate': w_rate
-        })
-        print(brightness, k_rate, w_rate)
+    # 计算总的迭代次数
+    total_iterations = 11 * 11 * 11
+
+    # rgb = np.array([1, 1, 1])
+    # concentration = rgb_to_concentration(rgb)
+    # pred_rgbd = concentration_to_rgbd(concentration)
+    # print(concentration)
+    # print(pred_rgbd)
+    # exit()
+
+    # 使用 tqdm 包装最内层循环以显示进度条
+    with tqdm(total=total_iterations, desc="Processing RGB values") as pbar:
+        for r in range(11):
+            for g in range(11):
+                for b in range(11):
+                    rgb = np.array([r, g, b]) / 10
+                    concentration = rgb_to_concentration_least_square(rgb)
+                    pred_rgbd = concentration_to_rgbd(concentration)
+                    
+                    # 将结果添加到列表中
+                    results.append({
+                        'r': rgb[0],
+                        'g': rgb[1],
+                        'b': rgb[2],
+                        'c_c': concentration[0],
+                        'c_m': concentration[1],
+                        'c_y': concentration[2],
+                        'c_k': concentration[3],
+                        'c_w': concentration[4],
+                        'pred_r': pred_rgbd[0],
+                        'pred_g': pred_rgbd[1],
+                        'pred_b': pred_rgbd[2],
+                        'pred_d': pred_rgbd[3]
+                    })
+
+                    # 更新进度条
+                    pbar.update(1)
 
     # 创建 DataFrame
     df = pd.DataFrame(results)
 
     # 将 DataFrame 写入 CSV 文件
-    df.to_csv('color/data/color_map/brightness_kw_rates.csv', index=False)
+    df.to_csv('color/data/color_map/10_test.csv', index=False)
+
+
+    # results = []
+
+    # for i in range(101):
+    #     brightness = i / 100
+    #     concentration = brightness_to_kw_concentration_least_square(brightness)
+    #     k_rate = concentration[0]
+    #     w_rate = concentration[1]
+    #     results.append({
+    #         'brightness': brightness,
+    #         'k_rate': k_rate,
+    #         'w_rate': w_rate
+    #     })
+    #     print(brightness, k_rate, w_rate)
+
+    # # 创建 DataFrame
+    # df = pd.DataFrame(results)
+
+    # # 将 DataFrame 写入 CSV 文件
+    # df.to_csv('color/data/color_map/brightness_kw_rates.csv', index=False)
 
 
     # with tqdm(total=total_iterations, desc="Processing RGB values") as pbar:

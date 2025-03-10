@@ -185,23 +185,23 @@ if __name__ == "__main__":
 
     results = []
 
-    # for i in range(101):
-    #     brightness = i / 100
-    #     concentration = brightness_to_kw_concentration_least_square(brightness)
-    #     k_rate = concentration[0]
-    #     w_rate = concentration[1]
-    #     results.append({
-    #         'brightness': brightness,
-    #         'k_rate': k_rate,
-    #         'w_rate': w_rate
-    #     })
-    #     print(brightness, k_rate, w_rate)
+    for i in range(101):
+        brightness = i / 100
+        concentration = brightness_to_kw_concentration_least_square(brightness)
+        k_rate = concentration[0]
+        w_rate = concentration[1]
+        results.append({
+            'brightness': brightness,
+            'k_rate': k_rate,
+            'w_rate': w_rate
+        })
+        # print(brightness, k_rate, w_rate)
 
-    # # 创建 DataFrame
-    # df = pd.DataFrame(results)
+    # 创建 DataFrame
+    df = pd.DataFrame(results)
 
-    # # 将 DataFrame 写入 CSV 文件
-    # df.to_csv('data/color_map/brightness_kw_rates.csv', index=False)
+    # 将 DataFrame 写入 CSV 文件
+    df.to_csv('data/color_map/brightness_kw_rates.csv', index=False)
 
 
     # with tqdm(total=total_iterations, desc="Processing RGB values") as pbar:

@@ -10,7 +10,7 @@ x = 3
 # bg_color = np.array([0, 0, 0])
 
 K, S = {}, {}
-for color in ['c', 'm', 'y', 'k', 'w', 'e']:
+for color in ['e', 'c', 'm', 'y', 'k', 'w']:
     data = pd.read_csv(f'./color/data/calib_data/{color}.csv')
     wavelength = data['Wavelength'].values
     K[color], S[color] = data['K'].values, data['S'].values
@@ -81,17 +81,17 @@ def color_board_2color(color_name, blend_num=10):
 
 if __name__ == '__main__':
     color_borad_4color_set = ['mykw', 'cykw', 'cmyk', 'cmyw', 'mcyk', 'mcyw', 'cykw', 'cmkw', 'ymkw']
-    os.makedirs('../print_ngp/workspace/colorboard/4color', exist_ok=True)
+    os.makedirs('../workspace/colorboard/4color', exist_ok=True)
     for color_4color in color_borad_4color_set:
         R_board, T_board, C_board = color_board_4color(color_4color, blend_num=10)
         board_image = create_board_image(C_board)
-        cv2.imwrite(f'../print_ngp/workspace/colorboard/4color/result_{color_4color}_board.png', board_image[:, :, [2,1,0]]*255)
+        cv2.imwrite(f'../workspace/colorboard/4color/result_{color_4color}_board.png', board_image[:, :, [2,1,0]]*255)
 
-    # color_borad_2color_set = ['cm', 'cy', 'ck', 'cw', 'my', 'mk', 'mw', 'yk', 'yw', 'kw']
-    # os.makedirs('../print_ngp/workspace/colorboard/2color', exist_ok=True)
-    # for color_2color in color_borad_2color_set:
-    #     R_board, T_board, C_board = color_board_2color(color_2color, blend_num=10)
-    #     board_image = create_board_image(C_board)
-    #     cv2.imwrite(f'../print_ngp/workspace/colorboard/2color/result_{color_2color}_board.png', board_image[:, :, [2,1,0]]*255)
+    color_borad_2color_set = ['cm', 'cy', 'ck', 'cw', 'my', 'mk', 'mw', 'yk', 'yw', 'kw']
+    os.makedirs('../workspace/colorboard/2color', exist_ok=True)
+    for color_2color in color_borad_2color_set:
+        R_board, T_board, C_board = color_board_2color(color_2color, blend_num=10)
+        board_image = create_board_image(C_board)
+        cv2.imwrite(f'../workspace/colorboard/2color/result_{color_2color}_board.png', board_image[:, :, [2,1,0]]*255)
 
 
