@@ -28,3 +28,4 @@ print/**
 .polyscope.ini
 **/print/
 
+gltf_buffer_*.bin

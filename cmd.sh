@@ -152,7 +152,6 @@ volume_folder=$(ls -d ${experiment}/${animal}_d${density}/volume${printheight}/n
 # 把之前错误尺寸的fern修复一下
 # 放弃环境，使用docker！
 # docker run -it --rm --gpus all -v /home/arno/Projects/Pint3D:/workspace pytorch/pytorch:1.11.0-cuda11.3-cudnn8-devel
-docker run -it --rm --gpus all -v /home/arno/Projects/Pint3D:/workspace arnoliu/print3dnerf:v0
 apt-get update
 apt-get install -y curl git
 # bash <(curl -sSL https://linuxmirrors.cn/main.sh)
@@ -164,6 +163,7 @@ pip install ninja trimesh opencv-contrib-python-headless tensorboardX numpy pand
 pip install imageio lpips torch-ema PyMCubes pysdf dearpygui torchmetrics
 pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
 
+docker run -it --rm --gpus all -v /home/arno/Projects/Pint3D:/workspace arnoliu/print3dnerf:v0
 
 export PATH=$CONDA_PREFIX/bin:$PATH
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
@@ -187,3 +187,29 @@ rsync -av --include='*/' --include='checkpoints/***' --exclude='*' ./source_dire
 rsync -av --progress "$SOURCE/" "$DESTINATION/$(basename "$SOURCE")" 
 rm -rf "$SOURCE"
 ln -s "$DESTINATION/$(basename "$SOURCE")" "$SOURCE"
+
+
+# whiteFix
+python ../print_volume/volume2print_batch.py  --input_folder /home/arno/Projects/Pint3D/print_data/typical_creature_furry
+python ../print_volume/volume2print_batch.py  --input_folder /home/arno/Projects/Pint3D/print_ngp/mylut
+
+python ../print_volume/volume2print_batch_GradientAgg.py  --input_folder /home/arno/Projects/Pint3D/print_data/test_slice
+
+&& python ../print_volume/preview_volume.py  --input_folder ${volume_folder}/pred_rgbd --savePrefix printReady
+
+python ../print_volume/preview_volume.py  --input_folder /home/arno/Projects/Pint3D/print_data/typical_creature_furry/pred_rgbd --savePrefix printReady
+
+
+
+
+python ../print_volume/preview_printslice.py --input_folder mylut/printImg/print/color1mm_White1mm/mode1/slice --savePrefix printReady
+
+
+
+python ../print_volume/volume2print_batch_GradientAgg.py  --input_folder /home/arno/Projects/Pint3D/print_data/Gau/lego_ner/lego_crop_newtest --adjust_density False
+
+
+python ../print_volume/volume2print_batch.py  --input_folder  /home/arno/Projects/Pint3D/print_data/Gau/sht
+python ../print_volume/preview_volume.py  --input_folder /home/arno/Projects/Pint3D/print_data/Gau/sht/pred_rgbd --savePrefix printReady
+
+
