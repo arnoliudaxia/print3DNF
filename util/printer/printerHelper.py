@@ -6,20 +6,30 @@ import numpy as np
 from PIL import ImageDraw
 import random
 
+
+def getVoxelSize():
+    """返回J8XX打印机打印的voxel的物理尺寸
+
+    Returns:
+        _type_: _description_
+    """
+    y,x,z=[0.0846666, 0.042333, 0.014]
+    return x, y, z
+
 def resize_byVoxelSize(
     image_path: Union[str, Path], 
-    output_path: Union[str, Path],
-    scale_factor: float = 3.0
+    output_path: Optional[Union[str, Path]] = None,
+    scale_factor: float = 2.0
 ) -> Optional[Image.Image]:
     """根据打印机体素大小调整图像尺寸。
     
     由于打印机的体素不是正立方体，需要按照打印机voxel的物理尺寸调整图像。
-    默认情况下，打印机在xy方向的比例是x = y * 3，图片发送后y方向会拉伸3倍。
+    默认情况下，打印机在xy方向的比例是x = y * 2，图片发送后y方向会拉伸2倍。
     
     Args:
         image_path (Union[str, Path]): 输入图像的路径
-        output_path (Union[str, Path]): 输出图像的保存路径
-        scale_factor (float, optional): 缩放因子，默认为3.0
+        output_path (Optional[Union[str, Path]], optional): 输出图像的保存路径，如果不指定则不保存图像
+        scale_factor (float, optional): 缩放因子，默认为2.0
         
     Returns:
         Optional[Image.Image]: 返回处理后的PIL Image对象，如果处理失败则返回None
@@ -28,6 +38,8 @@ def resize_byVoxelSize(
         FileNotFoundError: 当输入图像文件不存在时
         IOError: 当图像处理或保存过程中发生错误时
     """
+    x,y,z=getVoxelSize()
+    scale_factor=y/x
     try:
         # 确保输入路径存在
         image_path = Path(image_path)
@@ -47,12 +59,14 @@ def resize_byVoxelSize(
                 Image.Resampling.LANCZOS
             )
             
-            # 确保输出目录存在
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # 保存结果
-            resized_img.save(output_path, quality=95, optimize=True)
+            # 如果指定了输出路径，则保存图像
+            if output_path:
+                # 确保输出目录存在
+                output_path = Path(output_path)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # 保存结果
+                resized_img.save(output_path, quality=95, optimize=True)
             
             return resized_img
             

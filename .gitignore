@@ -29,3 +29,6 @@ print/**
 **/print/
 
 gltf_buffer_*.bin
+imgui.ini
+**/.cache/*
+*.npz
