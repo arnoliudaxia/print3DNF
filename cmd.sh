@@ -177,7 +177,6 @@ python main_nerf.py $datasetPath --workspace ../print_data/${animal} --save_volu
 
 volume_folder=$(ls -d ../print_data/${animal}/volume/ngp_* | head -n 1) && python ../print_volume/volume2print_batch.py --maskProportion $maskProportion --input_folder ${volume_folder} --output_folder ${volume_folder} && python ../print_volume/preview_volume.py  --input_folder ${volume_folder}/pred_rgbd --savePrefix printReady
 
-python ../print_volume/preview_volume.py --input_folder ${volume_folder}/array --savePrefix printReady
 
 ## rsic
 
@@ -189,27 +188,24 @@ rm -rf "$SOURCE"
 ln -s "$DESTINATION/$(basename "$SOURCE")" "$SOURCE"
 
 
-# whiteFix
-python ../print_volume/volume2print_batch.py  --input_folder /home/arno/Projects/Pint3D/print_data/typical_creature_furry
-python ../print_volume/volume2print_batch.py  --input_folder /home/arno/Projects/Pint3D/print_ngp/mylut
 
-python ../print_volume/volume2print_batch_GradientAgg.py  --input_folder /home/arno/Projects/Pint3D/print_data/test_slice
-
-&& python ../print_volume/preview_volume.py  --input_folder ${volume_folder}/pred_rgbd --savePrefix printReady
-
-python ../print_volume/preview_volume.py  --input_folder /home/arno/Projects/Pint3D/print_data/typical_creature_furry/pred_rgbd --savePrefix printReady
+python ../print_volume/preview_volume.py --input_folder ${volume_folder}/array  && python ../print_volume/preview_volume.py  --input_folder ${volume_folder}/pred_rgbd --savePrefix printReady
 
 
 
 
+/home/arno/Projects/Pint3D/print_data/Gau/lego_ner/lego_crop_newtest
+/home/arno/Projects/Pint3D/print_data/typical_creature_furry/pred_rgbd 
+
+
+python ../print_volume/volume2print_batch_GradientAgg.py  --input_folder  --adjust_density False # whiteFix
+python ../print_volume/volume2print_batch.py  --input_folder 
+
+
+
+- `preview_volume.py`: 从 `allData.npy` 文件加载数据，这是一个预先处理好的NumPy数组
+- `preview_printslice.py`: 从文件夹中读取各种格式的图片文件（jpg, png等）
+python ../print_volume/preview_volume.py  --input_folder --savePrefix printReady
 python ../print_volume/preview_printslice.py --input_folder mylut/printImg/print/color1mm_White1mm/mode1/slice --savePrefix printReady
-
-
-
-python ../print_volume/volume2print_batch_GradientAgg.py  --input_folder /home/arno/Projects/Pint3D/print_data/Gau/lego_ner/lego_crop_newtest --adjust_density False
-
-
-python ../print_volume/volume2print_batch.py  --input_folder  /home/arno/Projects/Pint3D/print_data/Gau/sht
-python ../print_volume/preview_volume.py  --input_folder /home/arno/Projects/Pint3D/print_data/Gau/sht/pred_rgbd --savePrefix printReady
 
 

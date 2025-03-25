@@ -1,9 +1,20 @@
 import numpy as np
 from tqdm import tqdm
 import polyscope as ps
+import argparse
 
-volume=np.load("/home/arno/Projects/Pint3D/print_data/fern/volume/ngp_471/array/allData-onlytree.npy" )
-# volume=np.load("/home/arno/Projects/Pint3D/print_data/test_slice/array/allData.npy" )
+# 解析命令行参数
+parser = argparse.ArgumentParser(description='显示体积数据的梯度场')
+parser.add_argument('--volume_path', type=str, help='体积数据的路径(.npy文件)')
+parser.add_argument('--sliceIndex', type=int, help='切片索引(从sliceIndex到sliceIndex+3)', default=-1)
+args = parser.parse_args()
+
+volume = np.load(args.volume_path)
+if args.sliceIndex != -1:
+    # volume = volume[args.sliceIndex:args.sliceIndex+3, ...]
+    # volume = volume[args.sliceIndex:args.sliceIndex+100, :, :, :]
+    volume = volume[:,:,args.sliceIndex:args.sliceIndex+100, :]
+    
 z_scale, y_scale, x_scale = 0.014, 0.0846666, 0.042333
 density = volume[..., 3]
 # 计算梯度场
@@ -15,7 +26,7 @@ def compute_gradient_field(density):
     return np.stack([dz, dy, dx], axis=-1)
 
 density_field=compute_gradient_field(density)
-breakpoint()
+
 # 创建用于可视化的点云数据
 z_coords, y_coords, x_coords = np.meshgrid(np.arange(density.shape[0]) * z_scale,
                                           np.arange(density.shape[1]) * y_scale,

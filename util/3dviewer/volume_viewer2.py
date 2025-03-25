@@ -33,6 +33,11 @@ def main():
         DataType = "RGB"
         # volume是BGRA，需要转换为RGBA
         volume = volume[..., [2, 1, 0, 3]] 
+    elif args.image_dir.endswith('.npz'):
+        volume = np.load(args.image_dir)['volume']
+        DataType = "RGB"
+        # 我的数据全流程保持RGBA
+        
     else:
         DataType = "half"
         image_files = sorted([f for f in os.listdir(args.image_dir) if f.endswith('.png')])
