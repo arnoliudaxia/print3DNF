@@ -337,7 +337,7 @@ def visualize_obj_vt_mapping_overlay(obj_path, tex_path):
 
 # 使用示例
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='在模型的贴图上展示对应的vertices')
+    parser = argparse.ArgumentParser(description='展示模型的贴图对应的vertices，faces')
     parser.add_argument('--obj_path', type=str, required=True, help='OBJ文件路径')
     args = parser.parse_args()
     
